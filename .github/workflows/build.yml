@@ -20,18 +20,23 @@ jobs:
       matrix:
         include:
           - arch: x86_64
-            sdk_image: openwrt/sdk:x86-64-23.05.2
+            sdk_image: openwrt/sdk:x86-64-24.10.0
             tag: x86_64
           - arch: mt7621
-            sdk_image: openwrt/sdk:ramips-mt7621-23.05.2
+            sdk_image: openwrt/sdk:ramips-mt7621-24.10.0
             tag: ramips_mt7621
           - arch: rockchip
-            sdk_image: openwrt/sdk:rockchip-armv8-23.05.2
+            sdk_image: openwrt/sdk:rockchip-armv8-24.10.0
             tag: rockchip_armv8
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Prepare Output Directory
+        run: |
+          mkdir -p bin_output
+          chmod 777 bin_output
 
       - name: Build Package
         run: |
@@ -40,6 +45,9 @@ jobs:
           
           # Run the build inside the OpenWrt SDK container
           docker run --rm -v "$(pwd):/src" ${{ matrix.sdk_image }} /bin/bash -c '
+            # 0. Setup SDK if needed (OpenWrt 24.10+ requirement)
+            [ -f setup.sh ] && ./setup.sh
+
             # 1. Update feeds to get dependencies (luci-base, libuci, etc.)
             ./scripts/feeds update -a
             ./scripts/feeds install -a
@@ -61,7 +69,7 @@ jobs:
             make package/luci-app-interface-monitor/compile V=s || exit 1
             
             # 5. Collect artifacts
-            mkdir -p /src/bin_output
+            # mkdir -p /src/bin_output # Created on host
             find bin/packages -name "interface-monitor*.ipk" -exec cp {} /src/bin_output/ \;
             find bin/packages -name "luci-app-interface-monitor*.ipk" -exec cp {} /src/bin_output/ \;
           '
