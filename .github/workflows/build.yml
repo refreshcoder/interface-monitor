@@ -38,19 +38,42 @@ jobs:
           mkdir -p bin_output
           chmod 777 bin_output
 
+      - name: Prepare Cache Directories
+        run: |
+          mkdir -p .cache/openwrt/dl
+          mkdir -p .cache/openwrt/staging_dir
+          mkdir -p .cache/openwrt/build_dir
+          mkdir -p .cache/openwrt/bin
+
+      - name: Cache OpenWrt SDK build directories
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/openwrt/dl
+            .cache/openwrt/staging_dir
+            .cache/openwrt/build_dir
+          key: openwrt-24.10-${{ matrix.tag }}-${{ hashFiles('**/Makefile', '.github/workflows/build.yml') }}
+          restore-keys: |
+            openwrt-24.10-${{ matrix.tag }}-
+
       - name: Build Package
         run: |
           # Ensure source is readable by the docker user
           chmod -R 755 .
           
           # Run the build inside the OpenWrt SDK container (as root to avoid uid/gid permission issues)
-          docker run --rm -u 0 -v "$(pwd):/src" ${{ matrix.sdk_image }} /bin/bash -c '
+          docker run --rm -u 0 \
+            -v "$(pwd):/src" \
+            -v "$(pwd)/.cache/openwrt/dl:/builder/dl" \
+            -v "$(pwd)/.cache/openwrt/staging_dir:/builder/staging_dir" \
+            -v "$(pwd)/.cache/openwrt/build_dir:/builder/build_dir" \
+            ${{ matrix.sdk_image }} /bin/bash -c '
             # 0. Setup SDK if needed (OpenWrt 24.10+ requirement)
             [ -f setup.sh ] && ./setup.sh
 
-            # 1. Update feeds to get dependencies (luci-base, libuci, etc.)
-            ./scripts/feeds update -a
-            ./scripts/feeds install -a
+            # 1. Update and install only required feeds to reduce time
+            ./scripts/feeds update luci packages
+            ./scripts/feeds install luci-base
             
             # 2. Copy our packages into the SDK package directory
             #    We use cp instead of direct mount to avoid permission issues with the build user
@@ -62,11 +85,8 @@ jobs:
             make defconfig
             
             # 4. Compile with verbose output to catch errors
-            echo "Building interface-monitor..."
-            make package/interface-monitor/compile V=s || exit 1
-            
-            echo "Building luci-app-interface-monitor..."
-            make package/luci-app-interface-monitor/compile V=s || exit 1
+            echo "Building packages in parallel..."
+            make package/{interface-monitor,luci-app-interface-monitor}/compile -j$(nproc) V=s || exit 1
             
             # 5. Collect artifacts
             echo "Collecting packages..."
