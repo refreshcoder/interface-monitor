@@ -1,0 +1,24 @@
+#!/bin/sh /etc/rc.common
+START=99
+USE_PROCD=1
+
+start_service() {
+    procd_open_instance
+    procd_set_param command "/usr/bin/interface_monitor.sh"
+    procd_set_param respawn 3600 5 0
+    procd_close_instance
+
+    # connectivity monitor instance
+    procd_open_instance connectivity
+    procd_set_param command "/usr/bin/connectivity_monitor.sh"
+    procd_set_param respawn 3600 5 0
+    procd_close_instance
+}
+
+service_triggers() {
+    procd_add_reload_trigger "interface_monitor"
+}
+
+stop_service() {
+    return 0
+}

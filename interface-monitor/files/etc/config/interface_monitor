@@ -1,0 +1,8 @@
+config settings 'settings'
+	list interfaces 'eth1'
+	list interfaces 'eth2'
+	list interfaces 'eth3'
+	option monitor_interval '60'
+	option connectivity_enable '0'
+	option target_ip ''
+	option ping_interval '60'

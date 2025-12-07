@@ -1,0 +1,74 @@
+name: Build OpenWrt Packages
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build for ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            sdk_image: openwrt/sdk:x86-64-23.05.2
+            tag: x86_64
+          - arch: mt7621
+            sdk_image: openwrt/sdk:ramips-mt7621-23.05.2
+            tag: ramips_mt7621
+          - arch: rockchip
+            sdk_image: openwrt/sdk:rockchip-armv8-23.05.2
+            tag: rockchip_armv8
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Package
+        run: |
+          # Ensure source is readable by the docker user
+          chmod -R 755 .
+          
+          # Run the build inside the OpenWrt SDK container
+          docker run --rm -v "$(pwd):/src" ${{ matrix.sdk_image }} /bin/bash -c '
+            # 1. Update feeds to get dependencies (luci-base, libuci, etc.)
+            ./scripts/feeds update -a
+            ./scripts/feeds install -a
+            
+            # 2. Copy our packages into the SDK package directory
+            #    We use cp instead of direct mount to avoid permission issues with the build user
+            cp -r /src/* package/
+            
+            # 3. Configure to build our packages
+            echo "CONFIG_PACKAGE_interface-monitor=m" >> .config
+            echo "CONFIG_PACKAGE_luci-app-interface-monitor=m" >> .config
+            make defconfig
+            
+            # 4. Compile with verbose output to catch errors
+            echo "Building interface-monitor..."
+            make package/interface-monitor/compile V=s || exit 1
+            
+            echo "Building luci-app-interface-monitor..."
+            make package/luci-app-interface-monitor/compile V=s || exit 1
+            
+            # 5. Collect artifacts
+            mkdir -p /src/bin_output
+            find bin/packages -name "interface-monitor*.ipk" -exec cp {} /src/bin_output/ \;
+            find bin/packages -name "luci-app-interface-monitor*.ipk" -exec cp {} /src/bin_output/ \;
+          '
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwrt-packages-${{ matrix.tag }}
+          path: bin_output/*.ipk
+          if-no-files-found: error
