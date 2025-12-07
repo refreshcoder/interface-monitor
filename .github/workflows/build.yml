@@ -50,8 +50,6 @@ jobs:
         with:
           path: |
             .cache/openwrt/dl
-            .cache/openwrt/staging_dir
-            .cache/openwrt/build_dir
           key: openwrt-24.10-${{ matrix.tag }}-${{ hashFiles('**/Makefile', '.github/workflows/build.yml') }}
           restore-keys: |
             openwrt-24.10-${{ matrix.tag }}-
@@ -65,15 +63,11 @@ jobs:
           docker run --rm -u 0 \
             -v "$(pwd):/src" \
             -v "$(pwd)/.cache/openwrt/dl:/builder/dl" \
-            -v "$(pwd)/.cache/openwrt/staging_dir:/builder/staging_dir" \
-            -v "$(pwd)/.cache/openwrt/build_dir:/builder/build_dir" \
             ${{ matrix.sdk_image }} /bin/bash -c '
-            # 0. Setup SDK if needed (OpenWrt 24.10+ requirement)
-            [ -f setup.sh ] && ./setup.sh
+            [ ! -d ./scripts ] && ./setup.sh
 
-            # 1. Update and install only required feeds to reduce time
-            ./scripts/feeds update luci packages
-            ./scripts/feeds install luci-base
+            ./scripts/feeds update -a
+            ./scripts/feeds install -a
             
             # 2. Copy our packages into the SDK package directory
             #    We use cp instead of direct mount to avoid permission issues with the build user
