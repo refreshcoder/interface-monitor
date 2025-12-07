@@ -69,10 +69,21 @@ jobs:
             make package/luci-app-interface-monitor/compile V=s || exit 1
             
             # 5. Collect artifacts
-            # mkdir -p /src/bin_output # Created on host
-            find bin/packages -name "interface-monitor*.ipk" -exec cp {} /src/bin_output/ \;
-            find bin/packages -name "luci-app-interface-monitor*.ipk" -exec cp {} /src/bin_output/ \;
+            echo "Collecting packages..."
+            # mkdir -p /src/bin_output # Created on host with 777 permissions
+            
+            # Find and copy files with verbose output to ensure they are found
+            find bin/packages -name "interface-monitor*.ipk" -exec cp -v {} /src/bin_output/ \;
+            find bin/packages -name "luci-app-interface-monitor*.ipk" -exec cp -v {} /src/bin_output/ \;
+            
+            echo "Verifying collected artifacts in /src/bin_output:"
+            ls -la /src/bin_output/
           '
+
+      - name: Verify Artifacts on Host
+        run: |
+          echo "Checking bin_output directory on host:"
+          ls -R bin_output
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
