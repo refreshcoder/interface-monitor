@@ -36,7 +36,10 @@ endef
 
 define Package/interface-monitor/postinst
 #!/bin/sh
-[ -n "$IPKG_INSTROOT" ] || /etc/init.d/interface_monitor enable
+[ -n "$IPKG_INSTROOT" ] || {
+    /etc/init.d/interface_monitor enable
+    /etc/init.d/interface_monitor start
+}
 exit 0
 endef
 

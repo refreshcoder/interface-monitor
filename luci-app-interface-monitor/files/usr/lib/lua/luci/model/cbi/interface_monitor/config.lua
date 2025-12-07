@@ -4,6 +4,9 @@ local s = map:section(TypedSection, "settings", translate("General Settings"))
 s.anonymous = true
 
 -- Interface Monitor Settings
+local enable_svc = s:option(Flag, "enabled", translate("Enable Service"))
+enable_svc.rmempty = false
+
 local ifaces = s:option(DynamicList, "interfaces", translate("Monitored Interfaces"))
 ifaces.datatype = "string"
 ifaces.description = translate("Interfaces to monitor (e.g. eth0)")
