@@ -22,12 +22,12 @@ jobs:
           - arch: x86_64
             sdk_image: openwrt/sdk:x86-64-24.10.0
             tag: x86_64
-          - arch: mt7621
-            sdk_image: openwrt/sdk:ramips-mt7621-24.10.0
-            tag: ramips_mt7621
-          - arch: rockchip
-            sdk_image: openwrt/sdk:rockchip-armv8-24.10.0
-            tag: rockchip_armv8
+          # - arch: mt7621
+          #   sdk_image: openwrt/sdk:ramips-mt7621-24.10.0
+          #   tag: ramips_mt7621
+          # - arch: rockchip
+          #   sdk_image: openwrt/sdk:rockchip-armv8-24.10.0
+          #   tag: rockchip_armv8
 
     steps:
       - name: Checkout code
@@ -43,8 +43,8 @@ jobs:
           # Ensure source is readable by the docker user
           chmod -R 755 .
           
-          # Run the build inside the OpenWrt SDK container
-          docker run --rm -v "$(pwd):/src" ${{ matrix.sdk_image }} /bin/bash -c '
+          # Run the build inside the OpenWrt SDK container (as root to avoid uid/gid permission issues)
+          docker run --rm -u 0 -v "$(pwd):/src" ${{ matrix.sdk_image }} /bin/bash -c '
             # 0. Setup SDK if needed (OpenWrt 24.10+ requirement)
             [ -f setup.sh ] && ./setup.sh
 
@@ -71,6 +71,7 @@ jobs:
             # 5. Collect artifacts
             echo "Collecting packages..."
             # mkdir -p /src/bin_output # Created on host with 777 permissions
+            chmod 777 /src/bin_output || true
             
             # Find and copy files with verbose output to ensure they are found
             find bin/packages -name "interface-monitor*.ipk" -exec cp -v {} /src/bin_output/ \;
