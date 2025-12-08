@@ -61,9 +61,14 @@ jobs:
             -e BUILD_NUMBER="${{ github.run_number }}" \
             -e BUILD_SHA="${{ github.sha }}" \
             -e ARCH_TAG="${{ matrix.tag }}" \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
             -v "$(pwd):/src" \
             -v "$(pwd)/.cache/openwrt/dl:/builder/dl" \
-            ${{ matrix.sdk_image }} /bin/bash -eu -o pipefail -c 'bash /src/.github/scripts/build-ipk.sh'
+            ${{ matrix.sdk_image }} /bin/bash -eu -o pipefail -c '
+              bash /src/.github/scripts/build-ipk.sh
+              chown -R "$HOST_UID:$HOST_GID" /src/bin_output
+            '
 
       - name: Verify Artifacts on Host
         run: |
@@ -79,17 +84,19 @@ jobs:
 
       - name: Generate Index and Pages
         run: |
-          chmod -R 755 .
           # Reuse the SDK container for indexing to ensure compatibility, or we could use a lightweight container.
           # We use the same container to access 'usign' and 'ipkg-make-index.sh'
           docker run --rm -u 0 -w /builder \
             -e OPKG_SIGNING_PRIV="${{ secrets.OPKG_SIGNING_PRIV }}" \
             -e OPKG_SIGNING_PUB="${{ secrets.OPKG_SIGNING_PUB }}" \
             -e ARCH_TAG="${{ matrix.tag }}" \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
             -v "$(pwd):/src" \
             ${{ matrix.sdk_image }} /bin/bash -eu -o pipefail -c '
               [ ! -d ./scripts ] && ./setup.sh
               bash /src/.github/scripts/gen-index.sh
+              chown -R "$HOST_UID:$HOST_GID" /src/bin_output
             '
         continue-on-error: true
 
