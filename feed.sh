@@ -9,9 +9,20 @@ mkdir -p /etc/opkg
 touch "$CFG"
 grep -q "$URL" "$CFG" || echo "src/gz interface-monitor $URL" >> "$CFG"
 TMPKEY="/tmp/opkg_pub.key"
-curl -fsSL "$KEY_URL" -o "$TMPKEY" || true
-if [ -s "$TMPKEY" ]; then
-  FP=$(usign -F -p "$TMPKEY" | awk '{print $2}')
-  cp "$TMPKEY" "/etc/opkg/keys/$FP"
+if curl -fsSL "$KEY_URL" -o "$TMPKEY"; then
+  if command -v opkg-key >/dev/null 2>&1; then
+    opkg-key add "$TMPKEY"
+  else
+    FP=$(usign -F -p "$TMPKEY")
+    if [ -n "$FP" ]; then
+      cp "$TMPKEY" "/etc/opkg/keys/$FP"
+    else
+      echo "Error: Failed to get fingerprint from key"
+      exit 1
+    fi
+  fi
+else
+  echo "Error: Failed to download key from $KEY_URL"
+  exit 1
 fi
 opkg update
