@@ -103,34 +103,42 @@ jobs:
       - name: Generate Pages HTML
         run: |
           set -e
-          # Root index
-          echo "<html><body><h2>Interface Monitor Feed</h2><ul>" > bin_output/index.html
-          echo "<li><a href=\"openwrt-24.10/\">openwrt-24.10/</a></li>" >> bin_output/index.html
-          if [ -d bin_output/openwrt-24.10/keys ]; then
-            echo "<li><a href=\"openwrt-24.10/keys/opkg_pub.key\">openwrt-24.10/keys/opkg_pub.key</a></li>" >> bin_output/index.html
-          fi
-          echo "</ul></body></html>" >> bin_output/index.html
-
-          # openwrt-24.10 index
-          mkdir -p bin_output/openwrt-24.10
-          echo "<html><body><h2>openwrt-24.10</h2><ul>" > bin_output/openwrt-24.10/index.html
-          for d in bin_output/openwrt-24.10/*; do
-            bn=$(basename "$d");
-            if [ "$bn" != "index.html" ]; then
-              echo "<li><a href=\"$bn/\">$bn/</a></li>" >> bin_output/openwrt-24.10/index.html
+          cd bin_output
+          # Use find to recursively visit all directories
+          find . -type d | while read dir; do
+            # Skip if index.html already exists (optional, but we overwrite to ensure consistency)
+            echo "Generating index for $dir"
+            
+            # Start HTML
+            echo "<html><head><meta charset=\"utf-8\"><title>Index of $dir</title></head><body>" > "$dir/index.html"
+            echo "<h2>Index of $dir</h2><hr><ul>" >> "$dir/index.html"
+            
+            # Parent link (if not root)
+            if [ "$dir" != "." ]; then
+              echo "<li><a href=\"../\">../</a></li>" >> "$dir/index.html"
             fi
+            
+            # List children (directories and files)
+            # We use a subshell to change directory safely
+            (
+              cd "$dir"
+              # List directories first
+              for d in */ ; do
+                if [ -d "$d" ]; then
+                  echo "<li><a href=\"$d\">$d</a></li>" >> "index.html"
+                fi
+              done
+              # List files
+              for f in *; do
+                if [ -f "$f" ] && [ "$f" != "index.html" ]; then
+                  echo "<li><a href=\"$f\">$f</a></li>" >> "index.html"
+                fi
+              done
+            )
+            
+            # End HTML
+            echo "</ul><hr></body></html>" >> "$dir/index.html"
           done
-          echo "</ul></body></html>" >> bin_output/openwrt-24.10/index.html
-
-          # interface-monitor dir index (x86_64)
-          if [ -d bin_output/openwrt-24.10/x86_64/interface-monitor ]; then
-            echo "<html><body><h2>x86_64/interface-monitor</h2><ul>" > bin_output/openwrt-24.10/x86_64/interface-monitor/index.html
-            for f in bin_output/openwrt-24.10/x86_64/interface-monitor/*; do
-              bn=$(basename "$f");
-              echo "<li><a href=\"$bn\">$bn</a></li>" >> bin_output/openwrt-24.10/x86_64/interface-monitor/index.html
-            done
-            echo "</ul></body></html>" >> bin_output/openwrt-24.10/x86_64/interface-monitor/index.html
-          fi
 
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v4
