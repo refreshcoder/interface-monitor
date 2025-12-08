@@ -41,6 +41,8 @@ while true; do
     echo "$interval" | grep -Eq '^[0-9]+$' || interval=60
     [ "$interval" -lt 5 ] && interval=5
     find "$LOG_DIR" -type f -name "*.log*" -mtime +7 -delete
+    verbose=$(uci -q get interface_monitor.settings.connectivity_verbose)
+    [ -z "$verbose" ] && verbose=0
 
     if [ "$enable" = "1" ] && [ -n "$target_ip" ]; then
         # Ping 3 times to get stats
@@ -81,6 +83,9 @@ while true; do
             echo "$(date +"%Y-%m-%d %H:%M:%S") Connectivity update $target_ip changed from $old_status to $status ($curr_details)" >> "$log_file"
             sed -i "/^$target_ip /d" "$state_file"
             echo "$target_ip $status" >> "$state_file"
+        fi
+        if [ "$verbose" = "1" ]; then
+            echo "$(date +"%Y-%m-%d %H:%M:%S") Connectivity heartbeat $target_ip: $status ($curr_details)" >> "$log_file"
         fi
     fi
 

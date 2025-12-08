@@ -28,4 +28,8 @@ ping_int.datatype = "uinteger"
 ping_int.default = "60"
 ping_int:depends("connectivity_enable", "1")
 
+local verbose = s:option(Flag, "connectivity_verbose", translate("Log Heartbeat Every Interval"))
+verbose.rmempty = false
+verbose:depends("connectivity_enable", "1")
+
 return map

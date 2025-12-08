@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=interface-monitor
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=2
+PKG_RELEASE:=$(if $(BUILD_NUMBER),$(BUILD_NUMBER),$(shell date +%Y%m%d%H%M))
 
 include $(INCLUDE_DIR)/package.mk
 

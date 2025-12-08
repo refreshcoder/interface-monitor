@@ -61,6 +61,8 @@ jobs:
           
           # Run the build inside the OpenWrt SDK container (as root to avoid uid/gid permission issues)
           docker run --rm -u 0 \
+            -e BUILD_NUMBER="${{ github.run_number }}" \
+            -e BUILD_SHA="${{ github.sha }}" \
             -v "$(pwd):/src" \
             -v "$(pwd)/.cache/openwrt/dl:/builder/dl" \
             ${{ matrix.sdk_image }} /bin/bash -c '
@@ -86,13 +88,18 @@ jobs:
             echo "Collecting packages..."
             # mkdir -p /src/bin_output # Created on host with 777 permissions
             chmod 777 /src/bin_output || true
+            mkdir -p /src/bin_output/${{ matrix.tag }}
             
             # Find and copy files with verbose output to ensure they are found
-            find bin/packages -name "interface-monitor*.ipk" -exec cp -v {} /src/bin_output/ \;
-            find bin/packages -name "luci-app-interface-monitor*.ipk" -exec cp -v {} /src/bin_output/ \;
+            find bin/packages -name "interface-monitor*.ipk" -exec cp -v {} /src/bin_output/${{ matrix.tag }}/ \;
+            find bin/packages -name "luci-app-interface-monitor*.ipk" -exec cp -v {} /src/bin_output/${{ matrix.tag }}/ \;
+
+            echo "Generating package index..."
+            ./scripts/ipkg-make-index.sh /src/bin_output/${{ matrix.tag }} > /src/bin_output/${{ matrix.tag }}/Packages
+            gzip -9c /src/bin_output/${{ matrix.tag }}/Packages > /src/bin_output/${{ matrix.tag }}/Packages.gz
             
-            echo "Verifying collected artifacts in /src/bin_output:"
-            ls -la /src/bin_output/
+            echo "Verifying collected artifacts in /src/bin_output/${{ matrix.tag }}:"
+            ls -la /src/bin_output/${{ matrix.tag }}/
           '
 
       - name: Verify Artifacts on Host
@@ -100,9 +107,30 @@ jobs:
           echo "Checking bin_output directory on host:"
           ls -R bin_output
 
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: bin_output
+
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: openwrt-packages-${{ matrix.tag }}
-          path: bin_output/*.ipk
+          path: bin_output/**/*.ipk
           if-no-files-found: error
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

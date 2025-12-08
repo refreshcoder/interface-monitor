@@ -1,0 +1,97 @@
+<%+header%>
+<h2><%:Connectivity Graph%></h2>
+<%
+local http = require "luci.http"
+%>
+<%
+local fs = require "nixio.fs"
+local log_dir = "/tmp/log/interface_monitor"
+local files = {}
+for f in fs.dir(log_dir) do
+    if f:match("^conn_.*%.log$") then
+        table.insert(files, f)
+    end
+end
+table.sort(files, function(a,b) return a > b end)
+local current_file = http.formvalue("file") or files[1]
+local content = ""
+if current_file and fs.access(log_dir .. "/" .. current_file) then
+    local fp = io.open(log_dir .. "/" .. current_file, "r")
+    if fp then
+        content = fp:read("*a")
+        fp:close()
+    end
+end
+%>
+<div class="cbi-section">
+  <div class="cbi-section-descr">
+    <form method="get" action="<%=luci.dispatcher.build_url('admin/status/interface_monitor/graph')%>">
+      <label><%:Log File%>
+        <select name="file" style="min-width:220px">
+          <% for _,f in ipairs(files) do %>
+            <option value="<%=f%>" <%=f==current_file and "selected" or ""%>><%=f%></option>
+          <% end %>
+        </select>
+      </label>
+      <label style="margin-left:16px"><%:Range%>
+        <select name="range">
+          <option value="60">1h</option>
+          <option value="360">6h</option>
+          <option value="1440" selected>24h</option>
+          <option value="0">All</option>
+        </select>
+      </label>
+      <input type="submit" class="cbi-button cbi-button-apply" value="<%:Apply%>" />
+    </form>
+  </div>
+  <% if current_file then %>
+  <h3><%=current_file%></h3>
+  <canvas id="chart" width="900" height="300" style="border:1px solid #ccc"></canvas>
+  <div>
+    <span style="color:#1976d2">RTT(ms)</span>
+    <span style="color:#d32f2f; margin-left:16px">Loss(%)</span>
+  </div>
+  <textarea id="raw" style="display:none"><%=content%></textarea>
+  <script>
+  (function(){
+    var raw=document.getElementById('raw').value.split('\n');
+    var range=parseInt((new URLSearchParams(location.search)).get('range')||'1440');
+    var t=[],r=[],l=[];
+    for(var i=0;i<raw.length;i++){
+      var s=raw[i];
+      if(!s) continue;
+      var m=s.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*loss:(\d+)% rtt:([0-9.]+)ms/);
+      if(m){ t.push(m[1]); l.push(parseFloat(m[2])); r.push(parseFloat(m[3])); }
+    }
+    if(t.length===0) return;
+    if(range>0){
+      var lastTs=new Date(t[t.length-1].replace(' ','T')).getTime();
+      var cutoff=lastTs - range*60*1000;
+      var nt=[], nr=[], nl=[];
+      for(var i=0;i<t.length;i++){
+        var ts=new Date(t[i].replace(' ','T')).getTime();
+        if(ts>=cutoff){ nt.push(t[i]); nr.push(r[i]); nl.push(l[i]); }
+      }
+      t=nt; r=nr; l=nl;
+    }
+    var c=document.getElementById('chart');
+    var ctx=c.getContext('2d');
+    var n=t.length;
+    var pw=c.width, ph=c.height, lm=40, bm=20, rw=pw-lm, rh=ph-bm;
+    var rmax=0, lmax=0; for(var i=0;i<n;i++){ if(r[i]>rmax) rmax=r[i]; if(l[i]>lmax) lmax=l[i]; }
+    if(rmax<=0) rmax=1; if(lmax<=0) lmax=1;
+    ctx.clearRect(0,0,pw,ph);
+    ctx.strokeStyle='#e0e0e0'; ctx.beginPath(); ctx.moveTo(lm,0); ctx.lineTo(lm,ph-bm); ctx.lineTo(pw,ph-bm); ctx.stroke();
+    function x(i){ return lm + (i*(rw/(n-1))); }
+    function yr(v){ return (ph-bm) - (v/rmax)*rh; }
+    function yl(v){ return (ph-bm) - (v/lmax)*rh; }
+    ctx.strokeStyle='#1976d2'; ctx.beginPath(); ctx.moveTo(x(0), yr(r[0])); for(var i=1;i<n;i++) ctx.lineTo(x(i), yr(r[i])); ctx.stroke();
+    ctx.strokeStyle='#d32f2f'; ctx.beginPath(); ctx.moveTo(x(0), yl(l[0])); for(var i=1;i<n;i++) ctx.lineTo(x(i), yl(l[i])); ctx.stroke();
+    var tickN=6; for(var k=0;k<tickN;k++){ var idx=Math.floor(k*(n-1)/(tickN-1)); var d=new Date(t[idx].replace(' ','T')); var label=d.toLocaleTimeString(); ctx.fillText(label, x(idx)-20, ph-6); }
+  })();
+  </script>
+  <% else %>
+  <p><%:No connectivity log found.%></p>
+  <% end %>
+</div>
+<%+footer%>
