@@ -3,7 +3,7 @@ set -e
 BASE="https://refreshcoder.github.io/interface-monitor/openwrt-24.10"
 ARCH=$(opkg print-architecture | awk '{print $2}' | tail -n1)
 URL="$BASE/$ARCH/interface-monitor"
-KEY_URL="$BASE/../keys/opkg_pub.key"
+KEY_URL="$BASE/keys/opkg_pub.key"
 CFG="/etc/opkg/customfeeds.conf"
 mkdir -p /etc/opkg
 touch "$CFG"

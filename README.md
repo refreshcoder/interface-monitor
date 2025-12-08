@@ -16,20 +16,20 @@ OpenWrt packages to monitor interface link state and target connectivity, with L
 ## Online Feed
 
 - Feed layout (per OpenWrt 24.10):
-  - `https://<user>.github.io/<repo>/openwrt-24.10/<arch>/interface-monitor/`
+  - `https://refreshcoder.github.io/interface-monitor/openwrt-24.10/x86_64/interface-monitor/`
   - Contains `*.ipk`, `Packages`, `Packages.gz`, optionally `Packages.sig`
-  - Public key (if signing enabled): `openwrt-24.10/keys/opkg_pub.key`
+  - Public key (if signing enabled): `https://refreshcoder.github.io/interface-monitor/openwrt-24.10/keys/opkg_pub.key`
 
 ### One‑line setup
 
 ```sh
-wget -O - https://github.com/<user>/<repo>/raw/refs/heads/main/feed.sh | ash
+wget -O - https://github.com/refreshcoder/interface-monitor/raw/refs/heads/main/feed.sh | ash
 ```
 
 ### Manual setup
 
 ```sh
-echo 'src/gz interface-monitor https://<user>.github.io/<repo>/openwrt-24.10/<arch>/interface-monitor' >> /etc/opkg/customfeeds.conf
+echo 'src/gz interface-monitor https://refreshcoder.github.io/interface-monitor/openwrt-24.10/x86_64/interface-monitor' >> /etc/opkg/customfeeds.conf
 opkg update
 opkg install interface-monitor luci-app-interface-monitor
 ```

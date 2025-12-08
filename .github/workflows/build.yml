@@ -101,6 +101,7 @@ jobs:
             # Ensure hashing tools exist (fallback to busybox applets)
             command -v sha256sum >/dev/null 2>&1 || { command -v busybox >/dev/null 2>&1 && ln -sf "$(command -v busybox)" /usr/bin/sha256sum; }
             command -v md5sum >/dev/null 2>&1 || { command -v busybox >/dev/null 2>&1 && ln -sf "$(command -v busybox)" /usr/bin/md5sum; }
+            command -v sha256 >/dev/null 2>&1 || { command -v sha256sum >/dev/null 2>&1 && ln -sf "$(command -v sha256sum)" /usr/bin/sha256; }
             ./scripts/ipkg-make-index.sh "$BASE_DIR" > "$BASE_DIR/Packages"
             if [ -s "$BASE_DIR/Packages" ]; then
               gzip -9c "$BASE_DIR/Packages" > "$BASE_DIR/Packages.gz"
