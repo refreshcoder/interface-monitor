@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # Log directory
-LOG_DIR="/var/log/interface_monitor"
+LOG_DIR="/tmp/log/interface_monitor"
 mkdir -p "$LOG_DIR"
 
 # Initialize state file

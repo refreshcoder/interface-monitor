@@ -3,7 +3,7 @@
 <%
 local fs = require "nixio.fs"
 local http = require "luci.http"
-local log_dir = "/var/log/interface_monitor"
+local log_dir = "/tmp/log/interface_monitor"
 local files = {}
 for f in fs.dir(log_dir) do
     if f:match("%.log$") or f:match("%.log%.old$") then
@@ -58,4 +58,3 @@ end
 </div>
 
 <%+footer%>
-

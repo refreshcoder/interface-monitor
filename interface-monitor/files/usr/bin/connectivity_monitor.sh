@@ -1,6 +1,6 @@
 #!/bin/sh
 
-LOG_DIR="/var/log/interface_monitor"
+LOG_DIR="/tmp/log/interface_monitor"
 mkdir -p "$LOG_DIR"
 
 state_file="/tmp/connectivity_state"
@@ -86,4 +86,3 @@ while true; do
 
     sleep "$interval"
 done
-
