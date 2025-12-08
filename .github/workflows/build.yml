@@ -60,19 +60,40 @@ jobs:
           docker run --rm -u 0 -w /builder \
             -e BUILD_NUMBER="${{ github.run_number }}" \
             -e BUILD_SHA="${{ github.sha }}" \
-            -e OPKG_SIGNING_PRIV="${{ secrets.OPKG_SIGNING_PRIV }}" \
-            -e OPKG_SIGNING_PUB="${{ secrets.OPKG_SIGNING_PUB }}" \
             -e ARCH_TAG="${{ matrix.tag }}" \
             -v "$(pwd):/src" \
             -v "$(pwd)/.cache/openwrt/dl:/builder/dl" \
-            ${{ matrix.sdk_image }} /bin/bash -eu -o pipefail -c 'bash /src/.github/scripts/ci-build.sh'
+            ${{ matrix.sdk_image }} /bin/bash -eu -o pipefail -c 'bash /src/.github/scripts/build-ipk.sh'
 
       - name: Verify Artifacts on Host
         run: |
           echo "Checking bin_output directory on host:"
           ls -R bin_output
 
-      - name: Generate Pages Index
+      - name: Upload Artifacts (Release Package)
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwrt-packages-${{ matrix.tag }}
+          path: bin_output/**/*.ipk
+          if-no-files-found: error
+
+      - name: Generate Index and Pages
+        run: |
+          chmod -R 755 .
+          # Reuse the SDK container for indexing to ensure compatibility, or we could use a lightweight container.
+          # We use the same container to access 'usign' and 'ipkg-make-index.sh'
+          docker run --rm -u 0 -w /builder \
+            -e OPKG_SIGNING_PRIV="${{ secrets.OPKG_SIGNING_PRIV }}" \
+            -e OPKG_SIGNING_PUB="${{ secrets.OPKG_SIGNING_PUB }}" \
+            -e ARCH_TAG="${{ matrix.tag }}" \
+            -v "$(pwd):/src" \
+            ${{ matrix.sdk_image }} /bin/bash -eu -o pipefail -c '
+              [ ! -d ./scripts ] && ./setup.sh
+              bash /src/.github/scripts/gen-index.sh
+            '
+        continue-on-error: true
+
+      - name: Generate Pages HTML
         run: |
           set -e
           # Root index
@@ -108,13 +129,6 @@ jobs:
         uses: actions/upload-pages-artifact@v4
         with:
           path: bin_output
-
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: openwrt-packages-${{ matrix.tag }}
-          path: bin_output/**/*.ipk
-          if-no-files-found: error
 
   deploy:
     name: Deploy to GitHub Pages
