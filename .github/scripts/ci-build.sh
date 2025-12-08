@@ -1,5 +1,28 @@
 #!/bin/bash
 set -euo pipefail
+export LC_ALL=C
+
+# Install required tools BEFORE build to ensure IPKs are created as ar archives
+if ! command -v ar >/dev/null 2>&1; then
+  if command -v apt-get >/dev/null 2>&1; then apt-get update && apt-get install -y binutils || true
+  elif command -v apk >/dev/null 2>&1; then apk add --no-cache binutils || true
+  elif command -v dnf >/dev/null 2>&1; then dnf install -y binutils || true
+  elif command -v yum >/dev/null 2>&1; then yum install -y binutils || true
+  fi
+fi
+
+if ! command -v sha256sum >/dev/null 2>&1; then
+  if command -v apt-get >/dev/null 2>&1; then apt-get update && apt-get install -y coreutils busybox || true
+  elif command -v apk >/dev/null 2>&1; then apk add --no-cache coreutils busybox || true
+  elif command -v dnf >/dev/null 2>&1; then dnf install -y coreutils busybox || true
+  elif command -v yum >/dev/null 2>&1; then yum install -y coreutils busybox || true
+  fi
+fi
+
+# Link busybox tools if standard ones are missing
+if ! command -v sha256sum >/dev/null 2>&1; then if command -v busybox >/dev/null 2>&1; then ln -sf "$(command -v busybox)" /usr/bin/sha256sum; fi; fi
+if ! command -v md5sum >/dev/null 2>&1; then if command -v busybox >/dev/null 2>&1; then ln -sf "$(command -v busybox)" /usr/bin/md5sum; fi; fi
+if ! command -v sha256 >/dev/null 2>&1; then if command -v sha256sum >/dev/null 2>&1; then ln -sf "$(command -v sha256sum)" /usr/bin/sha256; fi; fi
 
 [ ! -d ./scripts ] && ./setup.sh
 ./scripts/feeds update -a
@@ -21,24 +44,6 @@ mkdir -p "$BASE_DIR"
 
 find bin/packages -name "interface-monitor*.ipk" -exec cp -v {} "$BASE_DIR/" \;
 find bin/packages -name "luci-app-interface-monitor*.ipk" -exec cp -v {} "$BASE_DIR/" \;
-
-if ! command -v sha256sum >/dev/null 2>&1; then
-  if command -v apt-get >/dev/null 2>&1; then apt-get update && apt-get install -y coreutils busybox || true
-  elif command -v apk >/dev/null 2>&1; then apk add --no-cache coreutils busybox || true
-  elif command -v dnf >/dev/null 2>&1; then dnf install -y coreutils busybox || true
-  elif command -v yum >/dev/null 2>&1; then yum install -y coreutils busybox || true
-  fi
-fi
-if ! command -v ar >/dev/null 2>&1; then
-  if command -v apt-get >/dev/null 2>&1; then apt-get update && apt-get install -y binutils || true
-  elif command -v apk >/dev/null 2>&1; then apk add --no-cache binutils || true
-  elif command -v dnf >/dev/null 2>&1; then dnf install -y binutils || true
-  elif command -v yum >/dev/null 2>&1; then yum install -y binutils || true
-  fi
-fi
-if ! command -v sha256sum >/dev/null 2>&1; then if command -v busybox >/dev/null 2>&1; then ln -sf "$(command -v busybox)" /usr/bin/sha256sum; fi; fi
-if ! command -v md5sum >/dev/null 2>&1; then if command -v busybox >/dev/null 2>&1; then ln -sf "$(command -v busybox)" /usr/bin/md5sum; fi; fi
-if ! command -v sha256 >/dev/null 2>&1; then if command -v sha256sum >/dev/null 2>&1; then ln -sf "$(command -v sha256sum)" /usr/bin/sha256; fi; fi
 
 ipk_count=$(ls -1 "$BASE_DIR"/*.ipk 2>/dev/null | wc -l || echo 0)
 ls -la "$BASE_DIR"
