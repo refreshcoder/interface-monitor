@@ -2,7 +2,7 @@
 set -euo pipefail
 export LC_ALL=C
 
-penwrt/gh-action-sdk@main# Install required tools BEFORE build to ensure IPKs are created as ar archives
+# Install required tools BEFORE build to ensure IPKs are created as ar archives
 # Unconditionally install to ensure we have GNU versions instead of busybox/limited ones
 if command -v apt-get >/dev/null 2>&1; then
   apt-get update && apt-get install -y binutils coreutils tar sed gawk file || true
