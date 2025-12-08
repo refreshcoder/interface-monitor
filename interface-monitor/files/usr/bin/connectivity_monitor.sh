@@ -35,8 +35,9 @@ while true; do
 
     # read UCI settings each loop
     enable=$(uci -q get interface_monitor.settings.connectivity_enable)
-    # Handle target_ip as list or single value
-    targets=$(uci -q show interface_monitor.settings.target_ip | cut -d"'" -f2)
+    # Handle target_ip as list or single value, ensure space separation
+    targets=$(uci -q show interface_monitor.settings.target_ip | cut -d"'" -f2 | tr '\n' ' ')
+    
     interval=$(uci -q get interface_monitor.settings.ping_interval)
     [ -z "$interval" ] && interval=60
     echo "$interval" | grep -Eq '^[0-9]+$' || interval=60
@@ -47,6 +48,9 @@ while true; do
 
     if [ "$enable" = "1" ] && [ -n "$targets" ]; then
         for target_ip in $targets; do
+            # Skip empty entries
+            [ -z "$target_ip" ] && continue
+
             # Ping 3 times to get stats
             ping_out=$(ping -c 3 -W 2 "$target_ip" 2>&1)
             if [ $? -eq 0 ]; then
@@ -74,32 +78,74 @@ while true; do
             # Get outgoing interface for this target
             route_info=$(ip route get "$target_ip" 2>/dev/null)
             if [ -n "$route_info" ]; then
-                # Output format: "8.8.8.8 via 192.168.1.1 dev eth0 src 192.168.1.100 uid 0"
-                # or "192.168.1.1 dev eth0 src 192.168.1.100 uid 0" (connected directly)
-                # We want "eth0"
                 target_iface=$(echo "$route_info" | grep -o 'dev [^ ]*' | cut -d' ' -f2)
             else
                 target_iface="unknown"
             fi
             
-            # Structured Log Format: Timestamp|IP|Status|Loss|RTT|Interface
-            ts=$(date +"%Y-%m-%d %H:%M:%S")
+            # --- Extended Info Detection ---
+            mac="unknown"
+            hostname="unknown"
+            phy_iface="$target_iface"
+
+            # 1. MAC Address
+            neigh=$(ip neigh show "$target_ip")
+            if [ -n "$neigh" ]; then
+                mac=$(echo "$neigh" | awk '{print $5}')
+            fi
+            if [ -z "$mac" ] || [ "$mac" = "unknown" ]; then
+                mac=$(arp -n "$target_ip" 2>/dev/null | grep -v "incomplete" | awk '{print $3}')
+            fi
+            [ -z "$mac" ] && mac="unknown"
+
+            # 2. Hostname from dhcp.leases
+            if [ "$mac" != "unknown" ]; then
+                dhcp_name=$(grep -i "$mac" /tmp/dhcp.leases 2>/dev/null | awk '{print $4}')
+                [ -n "$dhcp_name" ] && hostname="$dhcp_name"
+            fi
             
+            # 3. Physical Interface (if bridge)
+            if echo "$target_iface" | grep -q "^br-" && [ "$mac" != "unknown" ]; then
+                # Try bridge fdb
+                fdb_out=$(bridge fdb show 2>/dev/null | grep -i "$mac")
+                if [ -n "$fdb_out" ]; then
+                     p_if=$(echo "$fdb_out" | grep "dev" | sed 's/.*dev \([^ ]*\).*/\1/' | grep -v "^$target_iface" | head -n 1)
+                     [ -n "$p_if" ] && phy_iface="$p_if"
+                else
+                    # Fallback to brctl showmacs
+                    port_no=$(brctl showmacs "$target_iface" 2>/dev/null | grep -i "$mac" | awk '{print $1}')
+                    if [ -n "$port_no" ] && [ -d "/sys/class/net/$target_iface/brif" ]; then
+                         for brif in "/sys/class/net/$target_iface/brif/"*; do
+                             if [ -f "$brif/port_no" ]; then
+                                 p=$(cat "$brif/port_no")
+                                 p_dec=$((p))
+                                 if [ "$p_dec" -eq "$port_no" ]; then
+                                     phy_iface=$(basename "$brif")
+                                     break
+                                 fi
+                             fi
+                         done
+                    fi
+                fi
+            fi
+            
+            # Structured Log Format: Timestamp|IP|Status|Loss|RTT|Interface|MAC|Hostname|PhyInterface
+            # Log every check to ensure continuous graph data
+            ts=$(date +"%Y-%m-%d %H:%M:%S")
+            echo "$ts|$target_ip|$status|$loss_str|$rtt_avg|$target_iface|$mac|$hostname|$phy_iface" >> "$log_file"
+            
+            # Update state file
             old_record=$(grep "^$target_ip " "$state_file")
             old_status=$(echo "$old_record" | awk '{print $2}')
             
             if [ -z "$old_status" ]; then
-                echo "$ts|$target_ip|$status|$loss_str|$rtt_avg|$target_iface" >> "$log_file"
                 echo "$target_ip $status" >> "$state_file"
             elif [ "$status" != "$old_status" ]; then
-                echo "$ts|$target_ip|$status|$loss_str|$rtt_avg|$target_iface" >> "$log_file"
                 sed -i "/^$target_ip /d" "$state_file"
                 echo "$target_ip $status" >> "$state_file"
-            elif [ "$verbose" = "1" ]; then
-                echo "$ts|$target_ip|$status|$loss_str|$rtt_avg|$target_iface" >> "$log_file"
             fi
         done
     fi
-
+    
     sleep "$interval"
 done

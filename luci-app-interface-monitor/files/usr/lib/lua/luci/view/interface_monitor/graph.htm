@@ -1,21 +1,23 @@
 <%+header%>
 <style>
   .modern-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 20px; }
-  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; }
-  .stat-item { padding: 10px; background: #f8f9fa; border-radius: 6px; text-align: center; }
-  .stat-label { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
-  .stat-value { font-size: 24px; font-weight: bold; color: #333; margin-top: 5px; }
-  .chart-container { position: relative; height: 350px; width: 100%; }
   .controls { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; }
   .control-group { display: flex; flex-direction: column; gap: 5px; }
   .control-group label { font-size: 12px; font-weight: bold; color: #555; }
   select { padding: 8px; border: 1px solid #ddd; border-radius: 4px; background: #fff; min-width: 150px; }
-  .btn-primary { background: #1976d2; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 500; }
   .btn-danger { background: #d32f2f; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 500; margin-left: auto; }
-  .tooltip { position: absolute; background: rgba(0,0,0,0.8); color: #fff; padding: 8px; border-radius: 4px; pointer-events: none; font-size: 12px; display: none; z-index: 100; white-space: nowrap; }
+  .btn-danger:hover { background: #b71c1c; }
+  .chart-container { position: relative; height: 500px; width: 100%; margin-top: 20px; }
+  .info-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-bottom: 20px; }
+  .info-card { background: #f5f5f5; padding: 10px; border-radius: 4px; font-size: 12px; border-left: 4px solid #1976d2; }
+  .info-card h4 { margin: 0 0 5px 0; font-size: 14px; color: #333; }
+  .info-card p { margin: 2px 0; color: #666; }
 </style>
 
 <h2><%:Connectivity Monitor%></h2>
+
+<!-- Use Baomitu CDN for ECharts (China-friendly) -->
+<script src="https://lib.baomitu.com/echarts/5.4.3/echarts.min.js"></script>
 
 <%
 local fs = require "nixio.fs"
@@ -53,307 +55,223 @@ end
         </div>
         <div class="control-group">
           <label><%:Time Range%></label>
-          <select name="range" id="rangeSelect">
+          <select name="range" id="rangeSelect" onchange="updateChart()">
             <option value="60">Last 1 Hour</option>
             <option value="360">Last 6 Hours</option>
             <option value="1440" selected>Last 24 Hours</option>
             <option value="0">All Data</option>
           </select>
         </div>
-        <div class="control-group">
-          <label><%:Target IP%></label>
-          <select id="ip_select"></select>
-        </div>
         <button type="button" class="btn-danger" onclick="clearHistory()"><%:Clear History%></button>
       </div>
     </form>
 
     <% if current_file then %>
-    <div class="stat-grid" id="stats">
-      <div class="stat-item">
-        <div class="stat-label">Target IP</div>
-        <div class="stat-value" id="info_ip">-</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-label">Interface</div>
-        <div class="stat-value" id="info_iface">-</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-label">Availability</div>
-        <div class="stat-value" style="color: #2e7d32" id="info_avail">-</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-label">Avg Latency</div>
-        <div class="stat-value" id="info_rtt">-</div>
-      </div>
-    </div>
-
-    <div class="chart-container">
-      <canvas id="chart"></canvas>
-      <div id="tooltip" class="tooltip"></div>
-    </div>
-    
+    <div id="deviceInfo" class="info-grid"></div>
+    <div class="chart-container" id="chart"></div>
     <textarea id="raw" style="display:none"><%=content%></textarea>
     <% else %>
-    <p><%:No connectivity log found.%></p>
+    <p><%:No connectivity log found. Check if the service is running and configured.%></p>
     <% end %>
   </div>
 </div>
 
 <script>
-(function(){
-    var raw = document.getElementById('raw').value.split('\n');
-    var rangeSelect = document.getElementById('rangeSelect');
-    
-    // Restore range from URL if present
-    var urlParams = new URLSearchParams(location.search);
-    if(urlParams.has('range')) {
-        rangeSelect.value = urlParams.get('range');
+  var chartInstance = null;
+
+  function parseData() {
+    var raw = document.getElementById('raw').value;
+    if (!raw) return {};
+
+    var lines = raw.split('\n');
+    var dataMap = {}; // ip -> { points: [], info: {} }
+
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim();
+      if (!line) continue;
+
+      var parts = line.split('|');
+      // Format: Timestamp|IP|Status|Loss|RTT|Interface|MAC|Hostname|PhyInterface
+      if (parts.length < 5) continue;
+
+      var ts = parts[0];
+      var ip = parts[1];
+      var status = parts[2];
+      var loss = parseFloat(parts[3]) || 0;
+      var rtt = parseFloat(parts[4]) || 0;
+      var iface = parts[5] || 'unknown';
+      var mac = parts[6] || 'unknown';
+      var hostname = parts[7] || 'unknown';
+      var phy = parts[8] || iface; // Fallback to logical if phy not found
+
+      if (!dataMap[ip]) {
+        dataMap[ip] = { points: [], info: { ip: ip, mac: mac, hostname: hostname, iface: iface, phy: phy, up: 0, total: 0 } };
+      }
+
+      // Update latest info
+      if (mac !== 'unknown') dataMap[ip].info.mac = mac;
+      if (hostname !== 'unknown') dataMap[ip].info.hostname = hostname;
+      if (phy !== 'unknown') dataMap[ip].info.phy = phy;
+      
+      dataMap[ip].info.total++;
+      if (status === 'up') dataMap[ip].info.up++;
+
+      dataMap[ip].points.push({
+        value: [ts, rtt],
+        loss: loss,
+        status: status,
+        info: dataMap[ip].info // Reference to current info state
+      });
     }
+    return dataMap;
+  }
+
+  function updateChart() {
+    var range = parseInt(document.getElementById('rangeSelect').value);
+    var dataMap = parseData();
+    var seriesList = [];
+    var legendData = [];
+    var infoHtml = '';
     
-    rangeSelect.addEventListener('change', function() {
-        // Update URL without reload
-        var url = new URL(location);
-        url.searchParams.set('range', this.value);
-        window.history.pushState({}, '', url);
-        render(document.getElementById('ip_select').value);
+    // Filter by range
+    var now = new Date();
+    // If we have data, use the last data point as 'now' to ensure we see something if logs are old
+    // Actually, user wants 'Last N Hours', usually relative to 'now' (real time) or 'log end time'.
+    // Let's use real time for live monitoring, but if looking at old logs, it might be empty.
+    // Let's find the max timestamp in data to be safe?
+    // No, standard practice is relative to now, but let's check if the file is today.
+    // The file name is conn_YYYY-MM-DD.log.
+    
+    var cutoff = new Date(now.getTime() - range * 60 * 1000);
+
+    Object.keys(dataMap).forEach(function(ip) {
+      var entry = dataMap[ip];
+      var points = entry.points;
+      
+      if (range > 0) {
+        points = points.filter(function(p) {
+          return new Date(p.value[0].replace(' ', 'T')) >= cutoff;
+        });
+      }
+      
+      if (points.length === 0) return;
+
+      legendData.push(ip);
+      
+      // Calculate availability
+      var avail = (entry.info.total > 0) ? (entry.info.up / entry.info.total * 100).toFixed(1) : 0;
+      var color = getColor(ip);
+      
+      // Info Card
+      infoHtml += '<div class="info-card" style="border-left-color: ' + color + '">';
+      infoHtml += '<h4>' + ip + ' <small>(' + avail + '% Avail)</small></h4>';
+      infoHtml += '<p><strong>Host:</strong> ' + entry.info.hostname + '</p>';
+      infoHtml += '<p><strong>MAC:</strong> ' + entry.info.mac + '</p>';
+      infoHtml += '<p><strong>Iface:</strong> ' + entry.info.iface + (entry.info.phy !== entry.info.iface ? ' (' + entry.info.phy + ')' : '') + '</p>';
+      infoHtml += '</div>';
+
+      seriesList.push({
+        name: ip,
+        type: 'line',
+        showSymbol: false,
+        data: points,
+        smooth: true,
+        lineStyle: { width: 2 },
+        itemStyle: { color: color },
+        emphasis: { focus: 'series' },
+        markPoint: {
+          data: points.filter(p => p.loss > 0 || p.status === 'down').map(p => ({
+             coord: p.value,
+             value: p.loss + '%',
+             itemStyle: { color: '#d32f2f' }
+          })),
+          symbolSize: 30
+        }
+      });
     });
 
-    var dataByIp = {};
+    document.getElementById('deviceInfo').innerHTML = infoHtml;
 
-    // Parse Data
-    for(var i=0; i<raw.length; i++){
-        var s = raw[i];
-        if(!s) continue;
-        var ts, ip, loss, rtt, iface = 'unknown';
-        var parts = s.split('|');
-        
-        if (parts.length >= 6) {
-             // New Format: Timestamp|IP|Status|Loss|RTT|Interface
-             ts = parts[0]; ip = parts[1]; loss = parseFloat(parts[3]); rtt = parseFloat(parts[4]); iface = parts[5];
-        } else if (parts.length >= 5) {
-             // Intermediate Format
-             ts = parts[0]; ip = parts[1]; loss = parseFloat(parts[3]); rtt = parseFloat(parts[4]);
-        } else {
-             // Old Regex Format
-             var m = s.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*loss:(\d+)% rtt:([0-9.]+)ms/);
-             if(m){ ts=m[1]; ip="default"; loss=parseFloat(m[2]); rtt=parseFloat(m[3]); }
-             else continue;
-        }
-        
-        if (!dataByIp[ip]) dataByIp[ip] = {t:[], l:[], r:[], i: iface};
-        dataByIp[ip].t.push(ts);
-        dataByIp[ip].l.push(loss);
-        dataByIp[ip].r.push(rtt);
-        if(iface !== 'unknown' && iface.trim() !== '') dataByIp[ip].i = iface; 
+    if (!chartInstance) {
+      chartInstance = echarts.init(document.getElementById('chart'));
     }
 
-    var ips = Object.keys(dataByIp).sort();
-    if(ips.length === 0) return;
-
-    var sel = document.getElementById('ip_select');
-    ips.forEach(function(ip){
-        var opt = document.createElement('option');
-        opt.value = ip;
-        opt.text = ip;
-        sel.add(opt);
-    });
-    
-    sel.addEventListener('change', function(){ render(this.value); });
-    
-    // Initial Render
-    render(ips[0]);
-
-    function render(ip) {
-        var d = dataByIp[ip];
-        if(!d) return;
-        var t=d.t, l=d.l, r=d.r;
-        var range = parseInt(rangeSelect.value);
-
-        // Filter by Range
-        if(range > 0){
-            var lastTs = new Date(t[t.length-1].replace(' ','T')).getTime();
-            var cutoff = lastTs - range*60*1000;
-            var nt=[], nr=[], nl=[];
-            for(var i=0; i<t.length; i++){
-                var ts = new Date(t[i].replace(' ','T')).getTime();
-                if(ts >= cutoff){ nt.push(t[i]); nr.push(r[i]); nl.push(l[i]); }
-            }
-            t=nt; r=nr; l=nl;
+    var option = {
+      tooltip: {
+        trigger: 'axis',
+        formatter: function(params) {
+          var res = params[0].axisValueLabel + '<br/>';
+          params.forEach(function(item) {
+             var d = item.data;
+             res += '<span style="display:inline-block;margin-right:5px;border-radius:10px;width:9px;height:9px;background-color:' + item.color + '"></span>';
+             res += '<strong>' + item.seriesName + '</strong>: ' + d.value[1] + 'ms (Loss: ' + d.loss + '%)<br/>';
+          });
+          return res;
         }
-
-        var n = t.length;
-        
-        // Update Stats
-        document.getElementById('info_ip').innerText = ip;
-        document.getElementById('info_iface').innerText = d.i;
-        
-        var upCount = 0;
-        var totalRtt = 0;
-        for(var i=0; i<n; i++) {
-            if(l[i] < 100) upCount++;
-            totalRtt += r[i];
+      },
+      legend: {
+        data: legendData,
+        bottom: 0
+      },
+      grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '10%',
+        containLabel: true
+      },
+      xAxis: {
+        type: 'time',
+        boundaryGap: false
+      },
+      yAxis: {
+        type: 'value',
+        name: 'Latency (ms)',
+        splitLine: {
+          lineStyle: { type: 'dashed' }
         }
-        
-        var avail = (n > 0) ? ((upCount / n) * 100).toFixed(2) + '%' : '0%';
-        var avgRtt = (upCount > 0) ? (totalRtt / upCount).toFixed(1) + ' ms' : '-';
-        
-        document.getElementById('info_avail').innerText = avail;
-        document.getElementById('info_rtt').innerText = avgRtt;
-
-        // Draw Chart
-        var c = document.getElementById('chart');
-        var container = c.parentElement;
-        // Adjust for retina display or simple scaling
-        var dpr = window.devicePixelRatio || 1;
-        c.width = container.clientWidth * dpr;
-        c.height = container.clientHeight * dpr;
-        c.style.width = container.clientWidth + 'px';
-        c.style.height = container.clientHeight + 'px';
-        
-        var ctx = c.getContext('2d');
-        ctx.scale(dpr, dpr);
-        
-        var pw = container.clientWidth, ph = container.clientHeight;
-        var padding = {top: 20, right: 20, bottom: 30, left: 50};
-        
-        ctx.clearRect(0,0,pw,ph);
-        
-        if(n === 0) {
-            ctx.fillStyle = '#666';
-            ctx.textAlign = 'center';
-            ctx.fillText('No data for this range', pw/2, ph/2);
-            return;
-        }
-
-        // Scales
-        var maxRtt = Math.max.apply(null, r);
-        if(maxRtt <= 0) maxRtt = 10;
-        maxRtt = Math.ceil(maxRtt * 1.2); 
-
-        var rw = pw - padding.left - padding.right;
-        var rh = ph - padding.top - padding.bottom;
-
-        function getX(i) { return padding.left + (i * (rw / (n - 1))); }
-        function getY(val) { return padding.top + rh - ((val / maxRtt) * rh); }
-
-        // Grid
-        ctx.strokeStyle = '#eee';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        for(var i=0; i<=5; i++) {
-            var y = padding.top + (i * (rh/5));
-            ctx.moveTo(padding.left, y);
-            ctx.lineTo(pw - padding.right, y);
-            
-            ctx.fillStyle = '#999';
-            ctx.textAlign = 'right';
-            ctx.font = '10px Arial';
-            ctx.fillText(Math.round(maxRtt - (i * (maxRtt/5))), padding.left - 10, y + 3);
-        }
-        ctx.stroke();
-
-        // RTT Line
-        var grad = ctx.createLinearGradient(0, padding.top, 0, ph - padding.bottom);
-        grad.addColorStop(0, 'rgba(25, 118, 210, 0.2)');
-        grad.addColorStop(1, 'rgba(25, 118, 210, 0.0)');
-
-        ctx.beginPath();
-        if(n > 1) {
-            ctx.moveTo(getX(0), getY(r[0]));
-            for(var i=1; i<n; i++) ctx.lineTo(getX(i), getY(r[i]));
-            ctx.lineTo(getX(n-1), ph - padding.bottom);
-            ctx.lineTo(getX(0), ph - padding.bottom);
-            ctx.fillStyle = grad;
-            ctx.fill();
-        }
-
-        ctx.strokeStyle = '#1976d2';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        if(n > 1) {
-            ctx.moveTo(getX(0), getY(r[0]));
-            for(var i=1; i<n; i++) ctx.lineTo(getX(i), getY(r[i]));
-        } else {
-             ctx.moveTo(padding.left, getY(r[0]));
-             ctx.lineTo(pw - padding.right, getY(r[0]));
-        }
-        ctx.stroke();
-
-        // Loss Points
-        ctx.fillStyle = '#d32f2f';
-        for(var i=0; i<n; i++) {
-            if(l[i] > 0) {
-                ctx.beginPath();
-                ctx.arc(getX(i), getY(r[i]), 3, 0, 2*Math.PI);
-                ctx.fill();
-            }
-        }
-        
-        // Time Labels
-        ctx.fillStyle = '#999';
-        ctx.textAlign = 'center';
-        var tickCount = 6;
-        for(var i=0; i<tickCount; i++) {
-            var idx = Math.floor(i * (n-1) / (tickCount-1));
-            if(t[idx]) {
-                var date = new Date(t[idx].replace(' ','T'));
-                var label = date.getHours() + ':' + ('0'+date.getMinutes()).slice(-2);
-                ctx.fillText(label, getX(idx), ph - 10);
-            }
-        }
-
-        // Tooltip Interaction
-        var tooltip = document.getElementById('tooltip');
-        c.onmousemove = function(e) {
-            var rect = c.getBoundingClientRect();
-            var mx = e.clientX - rect.left;
-            var my = e.clientY - rect.top;
-            
-            // Find nearest point
-            var idx = Math.round((mx - padding.left) / (rw / (n - 1)));
-            if(idx < 0) idx = 0;
-            if(idx >= n) idx = n - 1;
-            
-            // Snap to point x
-            var px = getX(idx);
-            var py = getY(r[idx]);
-            
-            // Check if mouse is close enough
-            if(Math.abs(mx - px) < 20) {
-                tooltip.style.display = 'block';
-                tooltip.style.left = (e.pageX + 10) + 'px';
-                tooltip.style.top = (e.pageY - 40) + 'px';
-                tooltip.innerHTML = '<div style="font-weight:bold">' + t[idx] + '</div>' + 
-                                    '<div>RTT: ' + r[idx] + 'ms</div>' + 
-                                    '<div style="color:' + (l[idx]>0?'#ff5252':'#fff') + '">Loss: ' + l[idx] + '%</div>';
-                
-                // Draw cursor line (optional, maybe too complex for simple canvas)
-            } else {
-                tooltip.style.display = 'none';
-            }
-        };
-        
-        c.onmouseout = function() {
-            tooltip.style.display = 'none';
-        };
-    }
-    
-    window.clearHistory = function() {
-        if(confirm('<%:Are you sure you want to delete all history logs?%>')) {
-            var xhr = new XMLHttpRequest();
-            xhr.open('GET', '<%=luci.dispatcher.build_url("admin/status/interface_monitor/clear_logs")%>', true);
-            xhr.onload = function() {
-                if(xhr.status === 200) {
-                    alert('<%:Logs cleared successfully.%>');
-                    location.reload();
-                } else {
-                    alert('<%:Failed to clear logs.%>');
-                }
-            };
-            xhr.send();
-        }
+      },
+      dataZoom: [
+        { type: 'inside', start: 0, end: 100 },
+        { type: 'slider', start: 0, end: 100 }
+      ],
+      series: seriesList
     };
-})();
+
+    chartInstance.setOption(option, true); // true = not merge, replace
+  }
+
+  // Simple color hash
+  function getColor(str) {
+    var colors = ['#1976d2', '#388e3c', '#fbc02d', '#7b1fa2', '#0288d1', '#e64a19', '#5d4037', '#c2185b'];
+    var hash = 0;
+    for (var i = 0; i < str.length; i++) {
+      hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+  }
+
+  function clearHistory() {
+    if (confirm('<%:Are you sure you want to delete all logs?%>')) {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', '<%=luci.dispatcher.build_url("admin/status/interface_monitor/clear_logs")%>', true);
+      xhr.onload = function() {
+        if (xhr.status === 200) {
+          alert('<%:Logs cleared successfully%>');
+          location.reload();
+        } else {
+          alert('<%:Failed to clear logs%>');
+        }
+      };
+      xhr.send();
+    }
+  }
+
+  // Init
+  if (document.getElementById('raw')) {
+    updateChart();
+    window.addEventListener('resize', function() {
+      if(chartInstance) chartInstance.resize();
+    });
+  }
 </script>
 <%+footer%>
