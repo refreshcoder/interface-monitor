@@ -15,6 +15,7 @@ fi
 
 # Link busybox tools if standard ones are missing (fallback)
 if ! command -v sha256sum >/dev/null 2>&1; then if command -v busybox >/dev/null 2>&1; then ln -sf "$(command -v busybox)" /usr/bin/sha256sum; fi; fi
+if ! command -v sha256 >/dev/null 2>&1; then if command -v sha256sum >/dev/null 2>&1; then ln -sf "$(command -v sha256sum)" /usr/bin/sha256; fi; fi
 
 ARCH_DIR="${ARCH_TAG:-x86_64}"
 BASE_DIR="/src/bin_output/openwrt-24.10/${ARCH_DIR}/interface-monitor"
@@ -40,7 +41,15 @@ if [ ! -s "$BASE_DIR/Packages" ]; then
   TMPIDX="/tmp/pkgidx"; mkdir -p "$TMPIDX"; : > "$BASE_DIR/Packages"
   for f in "$BASE_DIR"/*.ipk; do
     [ -f "$f" ] || continue
-    ar p "$f" control.tar.gz > "$TMPIDX/ctrl.tgz" || continue
+    # Try ar extraction first (standard opkg), then tar (legacy/fallback)
+    if ar t "$f" >/dev/null 2>&1; then
+      ar p "$f" control.tar.gz > "$TMPIDX/ctrl.tgz" || continue
+    else
+      # If not ar, assume it's a tar.gz (some build systems produce this)
+      # Extract control.tar.gz from the outer tarball
+      tar -xOzf "$f" ./control.tar.gz > "$TMPIDX/ctrl.tgz" 2>/dev/null || tar -xOzf "$f" control.tar.gz > "$TMPIDX/ctrl.tgz" 2>/dev/null || continue
+    fi
+    
     tar -xOzf "$TMPIDX/ctrl.tgz" ./control > "$TMPIDX/control" || continue
     size=$(stat -c %s "$f" 2>/dev/null || wc -c < "$f")
     sha=$(sha256sum "$f" | awk '{print $1}')
