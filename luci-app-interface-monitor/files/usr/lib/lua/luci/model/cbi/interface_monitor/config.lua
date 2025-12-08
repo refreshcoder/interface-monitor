@@ -19,7 +19,7 @@ mon_int.default = "60"
 local enable = s:option(Flag, "connectivity_enable", translate("Enable Connectivity Monitor"))
 enable.rmempty = false
 
-local ip = s:option(Value, "target_ip", translate("Target IP"))
+local ip = s:option(DynamicList, "target_ip", translate("Target IP"))
 ip.datatype = "ip4addr"
 ip:depends("connectivity_enable", "1")
 

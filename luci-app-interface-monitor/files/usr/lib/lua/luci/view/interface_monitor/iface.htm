@@ -1,12 +1,36 @@
 <%+header%>
-<h2><%:Interface Graph%></h2>
+<style>
+  .modern-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 20px; }
+  .controls { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; }
+  .control-group { display: flex; flex-direction: column; gap: 5px; }
+  .control-group label { font-size: 12px; font-weight: bold; color: #555; }
+  select { padding: 8px; border: 1px solid #ddd; border-radius: 4px; background: #fff; min-width: 200px; }
+  .btn-danger { background: #d32f2f; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 500; margin-left: auto; }
+  
+  .event-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  .event-table th { text-align: left; padding: 12px; background: #f5f5f5; color: #666; font-size: 12px; text-transform: uppercase; border-bottom: 2px solid #ddd; }
+  .event-table td { padding: 12px; border-bottom: 1px solid #eee; color: #333; font-size: 14px; }
+  .event-table tr:hover { background: #f9f9f9; }
+  
+  .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; color: #fff; }
+  .badge-init { background: #1976d2; }
+  .badge-update { background: #fbc02d; color: #333; }
+  .badge-unknown { background: #9e9e9e; }
+  
+  .state-change { font-family: monospace; }
+  .state-old { color: #d32f2f; text-decoration: line-through; margin-right: 5px; }
+  .state-new { color: #388e3c; font-weight: bold; }
+</style>
+
+<h2><%:Interface Monitor%></h2>
+
 <%
 local fs = require "nixio.fs"
 local http = require "luci.http"
 local log_dir = "/tmp/log/interface_monitor"
 local files = {}
 for f in fs.dir(log_dir) do
-    if f:match("^%d%d%d%d%-%d%d%-%d%d%.log$") then
+    if f:match("^iface_.*%.log$") then
         table.insert(files, f)
     end
 end
@@ -21,89 +45,173 @@ if current_file and fs.access(log_dir .. "/" .. current_file) then
     end
 end
 %>
+
 <div class="cbi-section">
-  <div class="cbi-section-descr">
+  <div class="modern-card">
     <form method="get" action="<%=luci.dispatcher.build_url('admin/status/interface_monitor/iface')%>">
-      <label><%:Log File%>
-        <select name="file" style="min-width:220px">
-          <% for _,f in ipairs(files) do %>
-            <option value="<%=f%>" <%=f==current_file and "selected" or ""%>><%=f%></option>
-          <% end %>
-        </select>
-      </label>
-      <label style="margin-left:16px"><%:Interface%>
-        <input type="text" name="iface" value="<%=http.formvalue('iface') or ''%>" placeholder="e.g. eth0"/>
-      </label>
-      <label style="margin-left:16px"><%:Range%>
-        <select name="range">
-          <option value="60">1h</option>
-          <option value="360">6h</option>
-          <option value="1440" selected>24h</option>
-          <option value="0">All</option>
-        </select>
-      </label>
-      <input type="submit" class="cbi-button cbi-button-apply" value="<%:Apply%>" />
+      <div class="controls">
+        <div class="control-group">
+          <label><%:Log File%></label>
+          <select name="file" onchange="this.form.submit()">
+            <% for _,f in ipairs(files) do %>
+              <option value="<%=f%>" <%=f==current_file and "selected" or ""%>><%=f%></option>
+            <% end %>
+          </select>
+        </div>
+        <div class="control-group">
+          <label><%:Filter Interface%></label>
+          <select id="iface_select">
+            <option value="all">All Interfaces</option>
+          </select>
+        </div>
+        <button type="button" class="btn-danger" onclick="clearHistory()"><%:Clear History%></button>
+      </div>
     </form>
+
+    <% if current_file then %>
+    <table class="event-table">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Interface</th>
+          <th>Event</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody id="eventBody">
+      </tbody>
+    </table>
+    
+    <textarea id="raw" style="display:none"><%=content%></textarea>
+    <% else %>
+    <p><%:No interface log found.%></p>
+    <% end %>
   </div>
-  <% if current_file then %>
-  <h3><%=current_file%></h3>
-  <canvas id="chart" width="900" height="320" style="border:1px solid #ccc"></canvas>
-  <div>
-    <span style="color:#1976d2">Speed(Mbps)</span>
-    <span style="color:#d32f2f; margin-left:16px">Down events</span>
-  </div>
-  <textarea id="raw" style="display:none"><%=content%></textarea>
-  <script>
-  (function(){
-    var raw=document.getElementById('raw').value.split('\n');
-    var iface=(new URLSearchParams(location.search)).get('iface')||'';
-    var range=parseInt((new URLSearchParams(location.search)).get('range')||'1440');
-    var points=[];
-    function parseSpeed(s){
-      if(!s) return 0;
-      if(/Gb\/s/i.test(s)){ return parseFloat(s)*1000; }
-      var m=s.match(/([0-9.]+)Mb\/s/i); return m?parseFloat(m[1]):0;
-    }
-    for(var i=0;i<raw.length;i++){
-      var line=raw[i]; if(!line) continue;
-      var m=line.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).* (State (?:init|update)) (\S+) .* to ([^ ]+) ([^ ]+)/);
-      if(m){
-        var ts=m[1], type=m[2], ifn=m[3], sp=m[4], link=m[5];
-        if(iface && ifn!==iface) continue;
-        var speed=parseSpeed(sp);
-        var down=(link.toLowerCase()==='no');
-        points.push({ts:ts,speed:speed,down:down});
-      }
-    }
-    if(points.length===0){ return; }
-    var now=new Date(points[points.length-1].ts.replace(' ','T')).getTime();
-    if(range>0){
-      var cutoff=now - range*60*1000;
-      points=points.filter(function(p){ return new Date(p.ts.replace(' ','T')).getTime()>=cutoff; });
-    }
-    var c=document.getElementById('chart'); var ctx=c.getContext('2d');
-    var pw=c.width, ph=c.height, lm=50, bm=30, rw=pw-lm, rh=ph-bm;
-    var maxS=0; for(var i=0;i<points.length;i++){ if(points[i].speed>maxS) maxS=points[i].speed; }
-    if(maxS<=0) maxS=1;
-    ctx.clearRect(0,0,pw,ph);
-    ctx.strokeStyle='#e0e0e0'; ctx.beginPath(); ctx.moveTo(lm,0); ctx.lineTo(lm,ph-bm); ctx.lineTo(pw,ph-bm); ctx.stroke();
-    function x(i){ return lm + (i*(rw/(points.length-1))); }
-    function ys(v){ return (ph-bm) - (v/maxS)*rh; }
-    ctx.strokeStyle='#1976d2'; ctx.beginPath(); ctx.moveTo(x(0), ys(points[0].speed));
-    for(var i=1;i<points.length;i++){ ctx.lineTo(x(i), ys(points[i].speed)); }
-    ctx.stroke();
-    ctx.fillStyle='#d32f2f';
-    var downCount=0;
-    for(var i=0;i<points.length;i++){
-      if(points[i].down){ downCount++; ctx.beginPath(); ctx.arc(x(i), ys(points[i].speed), 3, 0, 2*Math.PI); ctx.fill(); }
-    }
-    ctx.fillStyle='#000'; ctx.fillText('Down events: '+downCount, lm+8, 14);
-    var tickN=6; for(var t=0;t<tickN;t++){ var idx=Math.floor(t*(points.length-1)/(tickN-1)); var d=new Date(points[idx].ts.replace(' ','T')); var label=d.toLocaleTimeString(); ctx.fillText(label, x(idx)-20, ph-12); }
-    var step=Math.max(1, Math.round(maxS/5)); for(var v=0; v<=maxS; v+=step){ var yy=ys(v); ctx.fillText(v.toFixed(0), 4, yy+4); }
-  })();
-  </script>
-  <% else %>
-  <p><%:No interface log found.%></p>
-  <% end %>
 </div>
+
+<script>
+(function(){
+    var raw = document.getElementById('raw').value.split('\n');
+    var events = [];
+    var interfaces = new Set();
+    
+    for(var i=0; i<raw.length; i++){
+        var line = raw[i];
+        if(!line) continue;
+        
+        var ts, iface, event, details;
+        var parts = line.split('|');
+        
+        if (parts.length >= 5) {
+            // New Format: Timestamp|Interface|Event|OldState|NewState
+            ts = parts[0];
+            iface = parts[1];
+            event = parts[2];
+            var oldState = parts[3];
+            var newState = parts[4];
+            
+            if(oldState === 'none') {
+                details = '<span class="state-new">' + newState + '</span>';
+            } else {
+                details = '<span class="state-old">' + oldState + '</span> <span class="state-new">' + newState + '</span>';
+            }
+        } else {
+            // Old Regex Format fallback
+            var m = line.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) State (\w+) (\S+) changed from (.*) to (.*)/);
+            if(m) {
+                ts = m[1];
+                event = m[2]; 
+                iface = m[3];
+                var os = m[4];
+                var ns = m[5];
+                if(os === 'no state') {
+                    details = '<span class="state-new">' + ns + '</span>';
+                } else {
+                    details = '<span class="state-old">' + os + '</span> <span class="state-new">' + ns + '</span>';
+                }
+            } else {
+                continue;
+            }
+        }
+        
+        events.push({ts: ts, iface: iface, event: event, details: details});
+        interfaces.add(iface);
+    }
+    
+    // Populate Interface Select
+    var ifaceSelect = document.getElementById('iface_select');
+    var sortedIfaces = Array.from(interfaces).sort();
+    sortedIfaces.forEach(function(iface){
+        var opt = document.createElement('option');
+        opt.value = iface;
+        opt.text = iface;
+        ifaceSelect.add(opt);
+    });
+    
+    ifaceSelect.addEventListener('change', function(){
+        renderTable(this.value);
+    });
+    
+    var tbody = document.getElementById('eventBody');
+    
+    function renderTable(filterIface) {
+        tbody.innerHTML = '';
+        
+        // Reverse order (newest first)
+        for(var i = events.length - 1; i >= 0; i--) {
+            var e = events[i];
+            if(filterIface !== 'all' && e.iface !== filterIface) continue;
+            
+            var tr = document.createElement('tr');
+            
+            var tdTs = document.createElement('td');
+            tdTs.innerText = e.ts;
+            tr.appendChild(tdTs);
+            
+            var tdIface = document.createElement('td');
+            tdIface.innerText = e.iface;
+            tdIface.style.fontWeight = 'bold';
+            tr.appendChild(tdIface);
+            
+            var tdEvent = document.createElement('td');
+            var badgeClass = 'badge-unknown';
+            if(e.event === 'init' || e.event === 'initialization') badgeClass = 'badge-init';
+            if(e.event === 'update') badgeClass = 'badge-update';
+            tdEvent.innerHTML = '<span class="badge ' + badgeClass + '">' + e.event + '</span>';
+            tr.appendChild(tdEvent);
+            
+            var tdDetails = document.createElement('td');
+            tdDetails.innerHTML = e.details;
+            tdDetails.className = 'state-change';
+            tr.appendChild(tdDetails);
+            
+            tbody.appendChild(tr);
+        }
+        
+        if(tbody.children.length === 0) {
+            var tr = document.createElement('tr');
+            tr.innerHTML = '<td colspan="4" style="text-align:center; color:#999">No events found</td>';
+            tbody.appendChild(tr);
+        }
+    }
+    
+    renderTable('all');
+    
+    window.clearHistory = function() {
+        if(confirm('<%:Are you sure you want to delete all history logs?%>')) {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', '<%=luci.dispatcher.build_url("admin/status/interface_monitor/clear_logs")%>', true);
+            xhr.onload = function() {
+                if(xhr.status === 200) {
+                    alert('<%:Logs cleared successfully.%>');
+                    location.reload();
+                } else {
+                    alert('<%:Failed to clear logs.%>');
+                }
+            };
+            xhr.send();
+        }
+    };
+})();
+</script>
 <%+footer%>
