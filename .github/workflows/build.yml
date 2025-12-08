@@ -63,6 +63,8 @@ jobs:
           docker run --rm -u 0 \
             -e BUILD_NUMBER="${{ github.run_number }}" \
             -e BUILD_SHA="${{ github.sha }}" \
+            -e OPKG_SIGNING_PRIV="${{ secrets.OPKG_SIGNING_PRIV }}" \
+            -e OPKG_SIGNING_PUB="${{ secrets.OPKG_SIGNING_PUB }}" \
             -v "$(pwd):/src" \
             -v "$(pwd)/.cache/openwrt/dl:/builder/dl" \
             ${{ matrix.sdk_image }} /bin/bash -c '
@@ -88,18 +90,29 @@ jobs:
             echo "Collecting packages..."
             # mkdir -p /src/bin_output # Created on host with 777 permissions
             chmod 777 /src/bin_output || true
-            mkdir -p /src/bin_output/${{ matrix.tag }}
+            BASE_DIR="/src/bin_output/openwrt-24.10/${{ matrix.tag }}/interface-monitor"
+            mkdir -p "$BASE_DIR"
             
             # Find and copy files with verbose output to ensure they are found
-            find bin/packages -name "interface-monitor*.ipk" -exec cp -v {} /src/bin_output/${{ matrix.tag }}/ \;
-            find bin/packages -name "luci-app-interface-monitor*.ipk" -exec cp -v {} /src/bin_output/${{ matrix.tag }}/ \;
+            find bin/packages -name "interface-monitor*.ipk" -exec cp -v {} "$BASE_DIR/" \;
+            find bin/packages -name "luci-app-interface-monitor*.ipk" -exec cp -v {} "$BASE_DIR/" \;
 
             echo "Generating package index..."
-            ./scripts/ipkg-make-index.sh /src/bin_output/${{ matrix.tag }} > /src/bin_output/${{ matrix.tag }}/Packages
-            gzip -9c /src/bin_output/${{ matrix.tag }}/Packages > /src/bin_output/${{ matrix.tag }}/Packages.gz
-            
-            echo "Verifying collected artifacts in /src/bin_output/${{ matrix.tag }}:"
-            ls -la /src/bin_output/${{ matrix.tag }}/
+            ./scripts/ipkg-make-index.sh "$BASE_DIR" > "$BASE_DIR/Packages"
+            gzip -9c "$BASE_DIR/Packages" > "$BASE_DIR/Packages.gz"
+            mkdir -p /src/bin_output/openwrt-24.10/keys
+            if [ -n "$OPKG_SIGNING_PRIV" ]; then
+              printf "%s\n" "$OPKG_SIGNING_PRIV" > /tmp/opkg_priv.key
+              if [ -n "$OPKG_SIGNING_PUB" ]; then printf "%s\n" "$OPKG_SIGNING_PUB" > /src/bin_output/openwrt-24.10/keys/opkg_pub.key; fi
+              if [ -x staging_dir/host/bin/usign ]; then
+                staging_dir/host/bin/usign -S -m "$BASE_DIR/Packages" -s /tmp/opkg_priv.key -x "$BASE_DIR/Packages.sig"
+              else
+                usign -S -m "$BASE_DIR/Packages" -s /tmp/opkg_priv.key -x "$BASE_DIR/Packages.sig"
+              fi
+            fi
+
+            echo "Verifying collected artifacts in $BASE_DIR:"
+            ls -la "$BASE_DIR"
           '
 
       - name: Verify Artifacts on Host
