@@ -3,23 +3,18 @@ set -euo pipefail
 export LC_ALL=C
 
 # Install required tools BEFORE build to ensure IPKs are created as ar archives
-if ! command -v ar >/dev/null 2>&1; then
-  if command -v apt-get >/dev/null 2>&1; then apt-get update && apt-get install -y binutils || true
-  elif command -v apk >/dev/null 2>&1; then apk add --no-cache binutils || true
-  elif command -v dnf >/dev/null 2>&1; then dnf install -y binutils || true
-  elif command -v yum >/dev/null 2>&1; then yum install -y binutils || true
-  fi
+# Unconditionally install to ensure we have GNU versions instead of busybox/limited ones
+if command -v apt-get >/dev/null 2>&1; then
+  apt-get update && apt-get install -y binutils coreutils tar sed gawk file || true
+elif command -v apk >/dev/null 2>&1; then
+  apk add --no-cache binutils coreutils tar sed gawk file || true
+elif command -v dnf >/dev/null 2>&1; then
+  dnf install -y binutils coreutils tar sed gawk file || true
+elif command -v yum >/dev/null 2>&1; then
+  yum install -y binutils coreutils tar sed gawk file || true
 fi
 
-if ! command -v sha256sum >/dev/null 2>&1; then
-  if command -v apt-get >/dev/null 2>&1; then apt-get update && apt-get install -y coreutils busybox || true
-  elif command -v apk >/dev/null 2>&1; then apk add --no-cache coreutils busybox || true
-  elif command -v dnf >/dev/null 2>&1; then dnf install -y coreutils busybox || true
-  elif command -v yum >/dev/null 2>&1; then yum install -y coreutils busybox || true
-  fi
-fi
-
-# Link busybox tools if standard ones are missing
+# Link busybox tools if standard ones are missing (fallback)
 if ! command -v sha256sum >/dev/null 2>&1; then if command -v busybox >/dev/null 2>&1; then ln -sf "$(command -v busybox)" /usr/bin/sha256sum; fi; fi
 if ! command -v md5sum >/dev/null 2>&1; then if command -v busybox >/dev/null 2>&1; then ln -sf "$(command -v busybox)" /usr/bin/md5sum; fi; fi
 if ! command -v sha256 >/dev/null 2>&1; then if command -v sha256sum >/dev/null 2>&1; then ln -sf "$(command -v sha256sum)" /usr/bin/sha256; fi; fi
@@ -51,7 +46,20 @@ if [ "$ipk_count" -eq 0 ]; then
   exit 2
 fi
 
-if [ -x ./scripts/ipkg-make-index.sh ]; then bash ./scripts/ipkg-make-index.sh "$BASE_DIR" > "$BASE_DIR/Packages" || true; else ./scripts/ipkg-make-index.sh "$BASE_DIR" > "$BASE_DIR/Packages" || true; fi
+echo "Checking IPK file type:"
+file "$BASE_DIR"/*.ipk || true
+
+if [ -x ./scripts/ipkg-make-index.sh ]; then 
+  if ! bash ./scripts/ipkg-make-index.sh "$BASE_DIR" > "$BASE_DIR/Packages"; then
+    echo "Official ipkg-make-index.sh failed, cleaning up empty index."
+    rm -f "$BASE_DIR/Packages"
+  fi
+else 
+  if ! ./scripts/ipkg-make-index.sh "$BASE_DIR" > "$BASE_DIR/Packages"; then
+    echo "Official ipkg-make-index.sh failed, cleaning up empty index."
+    rm -f "$BASE_DIR/Packages"
+  fi
+fi
 
 if [ ! -s "$BASE_DIR/Packages" ]; then
   TMPIDX="/tmp/pkgidx"; mkdir -p "$TMPIDX"; : > "$BASE_DIR/Packages"
