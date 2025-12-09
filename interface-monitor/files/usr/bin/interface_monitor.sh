@@ -80,8 +80,9 @@ while true; do
     check_log_rotation "$log_file"
 
     # Read config from UCI
-    # Get all 'interfaces' values from the list
-    interfaces=$(uci -q show interface_monitor.settings | sed -n "s/^interface_monitor.settings.interfaces='\([^']*\)'$/\1/p" | tr '\n' ' ' | tr -s ' ')
+    # Extract all quoted values from interfaces list
+    line=$(uci -q show interface_monitor.settings | grep "^interface_monitor.settings.interfaces=")
+    interfaces=$(echo "$line" | grep -o "'[^']*'" | tr -d "'" | tr '\n' ' ' | tr -s ' ')
     interval=$(uci -q get interface_monitor.settings.monitor_interval)
     [ -z "$interval" ] && interval=60
     echo "$interval" | grep -Eq '^[0-9]+$' || interval=60

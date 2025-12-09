@@ -35,8 +35,10 @@ while true; do
     check_log_rotation "$log_file"
 
     enable=$(uci -q get interface_monitor.settings.connectivity_enable)
-    # Collect list items and single value fallback
-    targets=$(uci -q show interface_monitor.settings | sed -n "s/^interface_monitor.settings.target_ip='\([^']*\)'$/\1/p" | tr '\n' ' ' | tr -s ' ')
+    # Prefer full list from `uci show`, extract all quoted values
+    line=$(uci -q show interface_monitor.settings | grep "^interface_monitor.settings.target_ip=")
+    targets=$(echo "$line" | grep -o "'[^']*'" | tr -d "'" | tr '\n' ' ' | tr -s ' ')
+    # Fallback to single-value option if list not present
     [ -z "$targets" ] && targets=$(uci -q get interface_monitor.settings.target_ip 2>/dev/null)
     interval=$(uci -q get interface_monitor.settings.ping_interval)
     [ -z "$interval" ] && interval=60
