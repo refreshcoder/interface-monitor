@@ -27,8 +27,8 @@ define Package/interface-monitor/install
 	$(INSTALL_BIN) ./files/usr/bin/connectivity_monitor.sh $(1)/usr/bin/connectivity_monitor.sh
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/etc/init.d/interface_monitor $(1)/etc/init.d/interface_monitor
-    $(INSTALL_DIR) $(1)/etc/uci-defaults
-    $(INSTALL_BIN) ./files/etc/uci-defaults/99-interface-monitor $(1)/etc/uci-defaults/99-interface-monitor
+	$(INSTALL_DIR) $(1)/etc/uci-defaults
+	$(INSTALL_BIN) ./files/etc/uci-defaults/99-interface-monitor $(1)/etc/uci-defaults/99-interface-monitor
 endef
 
 define Package/interface-monitor/postinst
