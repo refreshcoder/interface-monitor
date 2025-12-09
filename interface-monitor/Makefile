@@ -35,10 +35,8 @@ define Package/interface-monitor/postinst
 #!/bin/sh
 [ -n "$IPKG_INSTROOT" ] || {
     # Ensure config section exists before setting options
-    if ! uci -q get interface_monitor.settings >/dev/null; then
-        sec=$(uci add interface_monitor settings 2>/dev/null)
-        [ -n "$sec" ] && uci rename interface_monitor.$sec=settings
-    fi
+    [ -f /etc/config/interface_monitor ] || touch /etc/config/interface_monitor
+    uci -q set interface_monitor.settings=settings
     # Run uci-defaults to populate defaults immediately
     if [ -x /etc/uci-defaults/99-interface-monitor ]; then
         /etc/uci-defaults/99-interface-monitor >/dev/null 2>&1 || true

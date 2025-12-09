@@ -3,10 +3,9 @@
 # Set defaults only if not present
 cfg="interface_monitor"
 
-if ! uci -q get $cfg.settings >/dev/null; then
-  sec=$(uci add $cfg settings 2>/dev/null)
-  [ -n "$sec" ] && uci rename $cfg.$sec=settings
-fi
+# Ensure config file exists and typed section is present
+[ -f /etc/config/$cfg ] || touch /etc/config/$cfg
+uci -q set $cfg.settings=settings
 
 uci -q get $cfg.settings.enabled >/dev/null || uci set $cfg.settings.enabled='1'
 uci -q get $cfg.settings.monitor_interval >/dev/null || uci set $cfg.settings.monitor_interval='60'
