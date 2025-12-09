@@ -39,6 +39,11 @@ define Package/interface-monitor/postinst
         sec=$(uci add interface_monitor settings 2>/dev/null)
         [ -n "$sec" ] && uci rename interface_monitor.$sec=settings
     fi
+    # Run uci-defaults to populate defaults immediately
+    if [ -x /etc/uci-defaults/99-interface-monitor ]; then
+        /etc/uci-defaults/99-interface-monitor >/dev/null 2>&1 || true
+        rm -f /etc/uci-defaults/99-interface-monitor
+    fi
     val=$(uci -q get interface_monitor.settings.enabled)
     [ -z "$val" ] && { uci set interface_monitor.settings.enabled='1'; uci commit interface_monitor; }
     /etc/init.d/interface_monitor enable
@@ -49,7 +54,10 @@ endef
 
 define Package/interface-monitor/prerm
 #!/bin/sh
-[ -n "$IPKG_INSTROOT" ] || /etc/init.d/interface_monitor disable
+[ -n "$IPKG_INSTROOT" ] || {
+    /etc/init.d/interface_monitor stop >/dev/null 2>&1 || true
+    /etc/init.d/interface_monitor disable >/dev/null 2>&1 || true
+}
 exit 0
 endef
 
