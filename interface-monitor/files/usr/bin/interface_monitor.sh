@@ -81,7 +81,7 @@ while true; do
 
     # Read config from UCI
     # Get all 'interfaces' values from the list
-    interfaces=$(uci -q show interface_monitor.settings.interfaces | cut -d"'" -f2 | tr '\n' ' ')
+    interfaces=$(uci -q show interface_monitor.settings | sed -n "s/^interface_monitor.settings.interfaces='\([^']*\)'$/\1/p" | tr '\n' ' ' | tr -s ' ')
     interval=$(uci -q get interface_monitor.settings.monitor_interval)
     [ -z "$interval" ] && interval=60
     echo "$interval" | grep -Eq '^[0-9]+$' || interval=60

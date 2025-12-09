@@ -34,11 +34,13 @@ endef
 define Package/interface-monitor/postinst
 #!/bin/sh
 [ -n "$IPKG_INSTROOT" ] || {
+    # Ensure config section exists before setting options
+    if ! uci -q get interface_monitor.settings >/dev/null; then
+        sec=$(uci add interface_monitor settings 2>/dev/null)
+        [ -n "$sec" ] && uci rename interface_monitor.$sec=settings
+    fi
     val=$(uci -q get interface_monitor.settings.enabled)
-    [ -z "$val" ] && {
-        uci set interface_monitor.settings.enabled='1'
-        uci commit interface_monitor
-    }
+    [ -z "$val" ] && { uci set interface_monitor.settings.enabled='1'; uci commit interface_monitor; }
     /etc/init.d/interface_monitor enable
     /etc/init.d/interface_monitor start
 }
