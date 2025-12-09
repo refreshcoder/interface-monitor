@@ -34,8 +34,7 @@ while true; do
     check_log_rotation "$log_file"
 
     enable=$(uci -q get interface_monitor.settings.connectivity_enable)
-    targets=$(uci -q show interface_monitor.settings.target_ip | awk -F"'" '/target_ip/{print $2}' | tr '\n' ' ' | tr -s ' ')
-    
+    targets=$(uci -q show interface_monitor.settings.target_ip | cut -d"'" -f2 | tr '\n' ' ')
     interval=$(uci -q get interface_monitor.settings.ping_interval)
     [ -z "$interval" ] && interval=60
     echo "$interval" | grep -Eq '^[0-9]+$' || interval=60

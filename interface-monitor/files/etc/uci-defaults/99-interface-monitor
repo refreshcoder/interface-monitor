@@ -1,0 +1,14 @@
+#!/bin/sh
+
+# Set defaults only if not present
+cfg="interface_monitor"
+
+uci -q get $cfg.settings.enabled >/dev/null || uci set $cfg.settings.enabled='1'
+uci -q get $cfg.settings.monitor_interval >/dev/null || uci set $cfg.settings.monitor_interval='60'
+uci -q get $cfg.settings.connectivity_enable >/dev/null || uci set $cfg.settings.connectivity_enable='0'
+uci -q get $cfg.settings.ping_interval >/dev/null || uci set $cfg.settings.ping_interval='60'
+uci -q get $cfg.settings.connectivity_verbose >/dev/null || uci set $cfg.settings.connectivity_verbose='0'
+
+uci commit $cfg
+
+exit 0

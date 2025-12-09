@@ -17,9 +17,6 @@ define Package/interface-monitor/description
 A simple interface monitor that logs speed and link changes without modifying original behavior.
 endef
 
-define Package/interface-monitor/conffiles
-/etc/config/interface_monitor
-endef
 
 define Build/Compile
 endef
@@ -30,8 +27,8 @@ define Package/interface-monitor/install
 	$(INSTALL_BIN) ./files/usr/bin/connectivity_monitor.sh $(1)/usr/bin/connectivity_monitor.sh
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/etc/init.d/interface_monitor $(1)/etc/init.d/interface_monitor
-	$(INSTALL_DIR) $(1)/etc/config
-	$(INSTALL_CONF) ./files/etc/config/interface_monitor $(1)/etc/config/interface_monitor
+    $(INSTALL_DIR) $(1)/etc/uci-defaults
+    $(INSTALL_BIN) ./files/etc/uci-defaults/99-interface-monitor $(1)/etc/uci-defaults/99-interface-monitor
 endef
 
 define Package/interface-monitor/postinst
