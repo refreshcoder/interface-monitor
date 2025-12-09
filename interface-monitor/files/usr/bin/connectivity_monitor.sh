@@ -2,6 +2,7 @@
 
 LOG_DIR="/tmp/log/interface_monitor"
 mkdir -p "$LOG_DIR"
+ERR_LOG="$LOG_DIR/error.log"
 
 state_file="/tmp/connectivity_state"
 [ ! -f "$state_file" ] && touch "$state_file"
@@ -34,7 +35,9 @@ while true; do
     check_log_rotation "$log_file"
 
     enable=$(uci -q get interface_monitor.settings.connectivity_enable)
+    # Collect list items and single value fallback
     targets=$(uci -q show interface_monitor.settings | sed -n "s/^interface_monitor.settings.target_ip='\([^']*\)'$/\1/p" | tr '\n' ' ' | tr -s ' ')
+    [ -z "$targets" ] && targets=$(uci -q get interface_monitor.settings.target_ip 2>/dev/null)
     interval=$(uci -q get interface_monitor.settings.ping_interval)
     [ -z "$interval" ] && interval=60
     echo "$interval" | grep -Eq '^[0-9]+$' || interval=60
@@ -142,6 +145,13 @@ while true; do
                 echo "$target_ip $status" >> "$state_file"
             fi
         done
+    else
+        ts=$(date +"%Y-%m-%d %H:%M:%S")
+        if [ "$enable" != "1" ]; then
+            echo "$ts|warn|connectivity disabled" >> "$ERR_LOG"
+        elif [ -z "$targets" ]; then
+            echo "$ts|warn|no target_ip configured" >> "$ERR_LOG"
+        fi
     fi
     
     sleep "$interval"
