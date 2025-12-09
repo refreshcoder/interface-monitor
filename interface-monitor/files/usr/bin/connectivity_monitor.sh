@@ -33,10 +33,8 @@ while true; do
     
     check_log_rotation "$log_file"
 
-    # read UCI settings each loop
     enable=$(uci -q get interface_monitor.settings.connectivity_enable)
-    # Handle target_ip as list or single value, ensure space separation
-    targets=$(uci -q show interface_monitor.settings.target_ip | cut -d"'" -f2 | tr '\n' ' ')
+    targets=$(uci -q show interface_monitor.settings.target_ip | awk -F"'" '/target_ip/{print $2}' | tr '\n' ' ' | tr -s ' ')
     
     interval=$(uci -q get interface_monitor.settings.ping_interval)
     [ -z "$interval" ] && interval=60
