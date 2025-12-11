@@ -171,7 +171,7 @@ local current_file = "conn.log"
       
       if (range > 0) {
         points = points.filter(function(p) {
-          return new Date(p.value[0].replace(' ', 'T')) >= cutoff;
+          return p.value[0] >= cutoff;
         });
       }
       
