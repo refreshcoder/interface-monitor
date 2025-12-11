@@ -1,88 +1,278 @@
-<%+header%>
+<% +header %>
+<style>
+  :root {
+    --cbi-background-color: #fff;
+    --cbi-text-color: #333;
+    --cbi-border-color: #ddd;
+    --cbi-input-background-color: #fff;
+    --cbi-input-border-color: #ccc;
+    --cbi-button-background-color: #e9ecef;
+    --cbi-button-text-color: #333;
+    --cbi-card-background-color: #f8f9fa;
+    --cbi-card-shadow-color: rgba(0,0,0,0.05);
+    --cbi-textarea-background-color: #f5f5f5;
+    --cbi-link-color: #1976d2;
+    --spacing-unit: 8px;
+    --border-radius: 6px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --cbi-background-color: #1e1e1e;
+      --cbi-text-color: #ccc;
+      --cbi-border-color: #444;
+      --cbi-input-background-color: #2a2a2a;
+      --cbi-input-border-color: #555;
+      --cbi-button-background-color: #3a3a3a;
+      --cbi-button-text-color: #eee;
+      --cbi-card-background-color: #2c2c2c;
+      --cbi-card-shadow-color: rgba(0,0,0,0.3);
+      --cbi-textarea-background-color: #2a2a2a;
+      --cbi-link-color: #2196f3;
+    }
+  }
+
+  body {
+    background-color: var(--cbi-background-color);
+    color: var(--cbi-text-color);
+  }
+
+  .cbi-section {
+    background: var(--cbi-card-background-color);
+    border-radius: var(--border-radius);
+    box-shadow: 0 2px 4px var(--cbi-card-shadow-color);
+    padding: calc(var(--spacing-unit) * 2.5);
+    margin-bottom: calc(var(--spacing-unit) * 2.5);
+  }
+
+  .cbi-section-descr {
+    margin-bottom: calc(var(--spacing-unit) * 2);
+  }
+
+  select, .cbi-button {
+    padding: var(--spacing-unit);
+    border: 1px solid var(--cbi-input-border-color);
+    border-radius: var(--border-radius);
+    background: var(--cbi-input-background-color);
+    color: var(--cbi-text-color);
+  }
+
+  .cbi-button-apply {
+    background-color: var(--cbi-button-background-color);
+    color: var(--cbi-button-text-color);
+    cursor: pointer;
+  }
+
+  textarea {
+    width: 100%;
+    height: 600px;
+    font-family: monospace;
+    background-color: var(--cbi-textarea-background-color);
+    color: var(--cbi-text-color);
+    border: 1px solid var(--cbi-border-color);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-unit);
+  }
+
+  .cbi-pagination {
+    margin-top: calc(var(--spacing-unit) * 2);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--spacing-unit);
+  }
+
+  .cbi-pagination a {
+    color: var(--cbi-link-color);
+    text-decoration: none;
+    padding: calc(var(--spacing-unit) * 0.5) var(--spacing-unit);
+    border-radius: var(--border-radius);
+  }
+
+  .cbi-pagination a:hover {
+    background-color: var(--cbi-button-background-color);
+  }
+</style>
 <h2><%:Interface Monitor Logs%></h2>
 <%
-local fs = require "nixio.fs"
-local http = require "luci.http"
-local log_dir = "/tmp/log/interface_monitor"
 local log_sources = { "iface.log", "conn.log" }
+local http = require "luci.http"
 local current_file = http.formvalue("file") or log_sources[1]
-
--- Security check
-local is_valid_file = false
-for _, f in ipairs(log_sources) do
-    if f == current_file then
-        is_valid_file = true
-        break
-    end
-end
-if not is_valid_file then current_file = log_sources[1] end
-local content = ""
-local lines_per_page = 100
-local page = tonumber(http.formvalue("page")) or 1
-local total_lines = 0
-local total_pages = 0
-
-if current_file and fs.access(log_dir .. "/" .. current_file) then
-    local fp = io.open(log_dir .. "/" .. current_file, "r")
-    if fp then
-        for _ in fp:lines() do
-            total_lines = total_lines + 1
-        end
-        fp:close()
-
-        total_pages = math.ceil(total_lines / lines_per_page)
-        if page > total_pages then page = total_pages end
-        if page < 1 then page = 1 end
-
-        local start_line = (page - 1) * lines_per_page + 1
-        local end_line = start_line + lines_per_page - 1
-        local current_line = 0
-        
-        fp = io.open(log_dir .. "/" .. current_file, "r")
-        local lines_to_read = {}
-        for line in fp:lines() do
-            current_line = current_line + 1
-            if current_line >= start_line and current_line <= end_line then
-                table.insert(lines_to_read, line)
-            end
-        end
-        content = table.concat(lines_to_read, "\n")
-        fp:close()
-    end
-else
-    current_file = nil -- Reset if invalid
-end
 %>
 
 <div class="cbi-section">
-    <div class="cbi-section-descr">
-        <form action="<%=luci.dispatcher.build_url('admin/status/interface_monitor/logs')%>" method="get">
-            <label><%:Select Log Source:%>
-                <select name="file" onchange="this.form.submit()">
-                    <% for _,f in ipairs(log_sources) do %>
-                        <option value="<%=f%>" <%=f == current_file and "selected" or ""%>><%=f%></option>
-                    <% end %>
-                </select>
-            </label>
-            <input type="submit" class="cbi-button cbi-button-apply" value="<%:Refresh%>" />
-        </form>
+    <div class="controls-bar">
+        <div class="control-group">
+            <label for="log_source_select"><%:Log Source%></label>
+            <select id="log_source_select">
+                <% for _,f in ipairs(log_sources) do %>
+                    <option value="<%=f%>" <%=f == current_file and "selected" or ""%>><%=f%></option>
+                <% end %>
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="auto-update-switch"><%:Auto Update%></label>
+            <input type="checkbox" id="auto-update-switch">
+        </div>
+        <div class="control-group">
+            <label for="auto-scroll-switch"><%:Auto Scroll%></label>
+            <input type="checkbox" id="auto-scroll-switch" checked>
+        </div>
     </div>
-    
-    <% if current_file then %>
-    <h3><%=current_file%></h3>
-    <textarea style="width: 100%; height: 600px; font-family: monospace;" readonly="readonly" wrap="off"><%=content%></textarea>
-    <div class="cbi-pagination">
-        <% if page > 1 then %>
-            <a href="<%=luci.dispatcher.build_url('admin/status/interface_monitor/logs')%>?file=<%=current_file%>&page=<%=page-1%>">« Previous</a>
-        <% end %>
-        <span>Page <%=page%> of <%=total_pages%></span>
-        <% if page < total_pages then %>
-            <a href="<%=luci.dispatcher.build_url('admin/status/interface_monitor/logs')%>?file=<%=current_file%>&page=<%=page+1%>">Next »</a>
-        <% end %>
-    </div>
-    <% else %>
-    <p><%:No log files found.%></p>
-    <% end %>
+
+    <pre id="log-container"></pre>
+    <div id="loading-indicator" style="display: none; text-align: center; padding: 20px;"><%:Loading...%></div>
+    <div id="no-more-logs" style="display: none; text-align: center; padding: 20px; color: #999;"><%:No more logs.%></div>
 </div>
+
+<script type="text/javascript">
+(function() {
+    const logContainer = document.getElementById('log-container');
+    const sourceSelect = document.getElementById('log_source_select');
+    const loadingIndicator = document.getElementById('loading-indicator');
+    const noMoreLogs = document.getElementById('no-more-logs');
+    const autoUpdateSwitch = document.getElementById('auto-update-switch');
+    const autoScrollSwitch = document.getElementById('auto-scroll-switch');
+
+    let currentPage = 1;
+    let isLoading = false;
+    let hasMore = true;
+    let currentFile = sourceSelect.value;
+    let isAutoUpdate = false;
+    let autoUpdateInterval;
+    let lastLogTimestamp = null;
+
+    function loadLogs(page, append = true) {
+        if (isLoading || (!hasMore && append)) return;
+
+        isLoading = true;
+        loadingIndicator.style.display = 'block';
+
+        const url = `<%=luci.dispatcher.build_url("admin/status/interface_monitor/get_log_data")%>?file=${currentFile}&page=${page}&limit=50`;
+
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                if (data.logs && data.logs.length > 0) {
+                    if (!append) {
+                        logContainer.innerHTML = '';
+                    }
+                    const fragment = document.createDocumentFragment();
+                    data.logs.forEach(line => {
+                        const div = document.createElement('div');
+                        div.textContent = line;
+                        fragment.appendChild(div);
+                    });
+                    logContainer.appendChild(fragment);
+                    currentPage++;
+                    if (autoScrollSwitch.checked) {
+                        logContainer.scrollTop = logContainer.scrollHeight;
+                    }
+                } else {
+                    if (append) {
+                        hasMore = false;
+                        noMoreLogs.style.display = 'block';
+                    }
+                }
+            })
+            .catch(error => console.error('Error loading logs:', error))
+            .finally(() => {
+                isLoading = false;
+                loadingIndicator.style.display = 'none';
+            });
+    }
+    
+    function fetchLatestLogs() {
+        if (isLoading) return;
+        isLoading = true;
+    
+        let url = `<%=luci.dispatcher.build_url("admin/status/interface_monitor/get_log_data")%>?file=${currentFile}&page=1&limit=50`;
+        if (lastLogTimestamp) {
+            url += `&since=${lastLogTimestamp}`;
+        }
+
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                if (data.logs && data.logs.length > 0) {
+                    const fragment = document.createDocumentFragment();
+                    // To avoid duplicates, we can check the content of the last few lines
+                    const existingLogs = Array.from(logContainer.childNodes).map(node => node.textContent);
+                    data.logs.reverse().forEach(line => { // The backend returns latest first, so we reverse to append in order
+                        if (!existingLogs.includes(line)) {
+                            const div = document.createElement('div');
+                            div.textContent = line;
+                            fragment.appendChild(div);
+                        }
+                    });
+    
+                    if (fragment.childNodes.length > 0) {
+                        logContainer.appendChild(fragment);
+                        if (autoScrollSwitch.checked) {
+                            logContainer.scrollTop = logContainer.scrollHeight;
+                        }
+                    }
+                    // Update the timestamp with the latest log entry
+                    if(data.logs.length > 0) {
+                        const lastLog = data.logs[0]; 
+                        const match = lastLog.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/);
+                        if (match) {
+                            lastLogTimestamp = match[1];
+                        }
+                    }
+                }
+            })
+            .catch(error => console.error('Error fetching latest logs:', error))
+            .finally(() => {
+                isLoading = false;
+            });
+    }
+
+    function handleScroll() {
+        if (isAutoUpdate) return;
+        if (logContainer.scrollTop + logContainer.clientHeight >= logContainer.scrollHeight - 10) {
+            loadLogs(currentPage);
+        }
+    }
+
+    function resetAndLoad() {
+        logContainer.innerHTML = '';
+        currentPage = 1;
+        hasMore = true;
+        isLoading = false;
+        lastLogTimestamp = null;
+        noMoreLogs.style.display = 'none';
+        currentFile = sourceSelect.value;
+        if (isAutoUpdate) {
+            fetchLatestLogs();
+        } else {
+            loadLogs(currentPage, false);
+        }
+    }
+
+    function toggleAutoUpdate() {
+        isAutoUpdate = autoUpdateSwitch.checked;
+        if (isAutoUpdate) {
+            resetAndLoad();
+            autoUpdateInterval = setInterval(fetchLatestLogs, 2000);
+            logContainer.removeEventListener('scroll', handleScroll);
+            noMoreLogs.style.display = 'none';
+            hasMore = false; 
+        } else {
+            clearInterval(autoUpdateInterval);
+            logContainer.addEventListener('scroll', handleScroll);
+            resetAndLoad();
+        }
+    }
+
+    // Initial load
+    loadLogs(currentPage);
+
+    // Event listeners
+    logContainer.addEventListener('scroll', handleScroll);
+    sourceSelect.addEventListener('change', resetAndLoad);
+    autoUpdateSwitch.addEventListener('change', toggleAutoUpdate);
+})();
+</script>
 
 <%+footer%>

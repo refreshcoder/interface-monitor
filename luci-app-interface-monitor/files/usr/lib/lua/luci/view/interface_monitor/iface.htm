@@ -1,30 +1,78 @@
 <%+header%>
 <style>
-  .modern-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 20px; }
-  .controls { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; }
-  .control-group { display: flex; flex-direction: column; gap: 5px; }
-  .control-group label { font-size: 12px; font-weight: bold; color: #555; }
-  select { padding: 8px; border: 1px solid #ddd; border-radius: 4px; background: #fff; min-width: 200px; }
-  .btn-danger { background: #d32f2f; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 500; margin-left: auto; }
-  .port-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; margin-top: 10px; }
-  .port-card { background: #e9ecef; border-radius: 6px; padding: 12px; display: flex; flex-direction: column; align-items: flex-start; position: relative; }
-  .port-icon { width: 48px; height: 30px; background: linear-gradient(#444, #222); border-radius: 4px; position: relative; margin-bottom: 8px; }
-  .port-status-dot { position: absolute; left: 4px; bottom: 4px; width: 8px; height: 8px; border-radius: 50%; background: #4caf50; }
-  .port-speed { font-size: 12px; color: #666; margin-bottom: 2px; }
-  .port-name { font-size: 14px; color: #333; }
+  :root {
+    --cbi-background-color: #fff;
+    --cbi-text-color: #333;
+    --cbi-border-color: #ddd;
+    --cbi-input-background-color: #fff;
+    --cbi-input-border-color: #ccc;
+    --cbi-button-background-color: #e9ecef;
+    --cbi-button-text-color: #333;
+    --cbi-card-background-color: #f8f9fa;
+    --cbi-card-shadow-color: rgba(0,0,0,0.05);
+    --cbi-table-header-background-color: #f5f5f5;
+    --cbi-table-row-hover-background-color: #f9f9f9;
+    --cbi-badge-init-background-color: #1976d2;
+    --cbi-badge-update-background-color: #fbc02d;
+    --cbi-badge-unknown-background-color: #9e9e9e;
+    --cbi-danger-background-color: #d32f2f;
+    --cbi-danger-hover-background-color: #b71c1c;
+    --spacing-unit: 8px;
+    --border-radius: 6px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --cbi-background-color: #1e1e1e;
+      --cbi-text-color: #ccc;
+      --cbi-border-color: #444;
+      --cbi-input-background-color: #2a2a2a;
+      --cbi-input-border-color: #555;
+      --cbi-button-background-color: #3a3a3a;
+      --cbi-button-text-color: #eee;
+      --cbi-card-background-color: #2c2c2c;
+      --cbi-card-shadow-color: rgba(0,0,0,0.3);
+      --cbi-table-header-background-color: #333;
+      --cbi-table-row-hover-background-color: #383838;
+      --cbi-badge-init-background-color: #2196f3;
+      --cbi-badge-update-background-color: #ffca28;
+      --cbi-badge-unknown-background-color: #757575;
+      --cbi-danger-background-color: #e53935;
+      --cbi-danger-hover-background-color: #c62828;
+    }
+  }
+
+  body {
+    background-color: var(--cbi-background-color);
+    color: var(--cbi-text-color);
+  }
+
+  .modern-card { background: var(--cbi-card-background-color); border-radius: var(--border-radius); box-shadow: 0 2px 4px var(--cbi-card-shadow-color); padding: calc(var(--spacing-unit) * 2.5); margin-bottom: calc(var(--spacing-unit) * 2.5); }
+  .controls { display: flex; gap: calc(var(--spacing-unit) * 2); align-items: center; flex-wrap: wrap; margin-bottom: calc(var(--spacing-unit) * 2.5); }
+  .control-group { display: flex; flex-direction: column; gap: var(--spacing-unit); }
+  .control-group label { font-size: 12px; font-weight: bold; color: var(--cbi-text-color); }
+  select { padding: var(--spacing-unit); border: 1px solid var(--cbi-input-border-color); border-radius: var(--border-radius); background: var(--cbi-input-background-color); color: var(--cbi-text-color); min-width: 200px; }
+  .btn-danger { background: var(--cbi-danger-background-color); color: #fff; border: none; padding: var(--spacing-unit) calc(var(--spacing-unit) * 2); border-radius: var(--border-radius); cursor: pointer; font-weight: 500; margin-left: auto; }
+  .btn-danger:hover { background: var(--cbi-danger-hover-background-color); }
+  .port-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: calc(var(--spacing-unit) * 2); margin-top: var(--spacing-unit); }
+  .port-card { background: var(--cbi-background-color); border-radius: var(--border-radius); padding: calc(var(--spacing-unit) * 1.5); display: flex; flex-direction: column; align-items: flex-start; position: relative; border: 1px solid var(--cbi-border-color); }
+  .port-icon { width: 48px; height: 30px; background: linear-gradient(#555, #333); border-radius: 4px; position: relative; margin-bottom: var(--spacing-unit); }
+  .port-status-dot { position: absolute; left: 4px; bottom: 4px; width: var(--spacing-unit); height: var(--spacing-unit); border-radius: 50%; background: #4caf50; }
+  .port-speed { font-size: 12px; color: var(--cbi-text-color); opacity: 0.7; margin-bottom: 2px; }
+  .port-name { font-size: 14px; color: var(--cbi-text-color); font-weight: bold; }
   
-  .event-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-  .event-table th { text-align: left; padding: 12px; background: #f5f5f5; color: #666; font-size: 12px; text-transform: uppercase; border-bottom: 2px solid #ddd; }
-  .event-table td { padding: 12px; border-bottom: 1px solid #eee; color: #333; font-size: 14px; }
-  .event-table tr:hover { background: #f9f9f9; }
+  .event-table { width: 100%; border-collapse: collapse; margin-top: var(--spacing-unit); }
+  .event-table th { text-align: left; padding: calc(var(--spacing-unit) * 1.5); background: var(--cbi-table-header-background-color); color: var(--cbi-text-color); font-size: 12px; text-transform: uppercase; border-bottom: 2px solid var(--cbi-border-color); }
+  .event-table td { padding: calc(var(--spacing-unit) * 1.5); border-bottom: 1px solid var(--cbi-border-color); color: var(--cbi-text-color); font-size: 14px; }
+  .event-table tr:hover { background: var(--cbi-table-row-hover-background-color); }
   
-  .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; color: #fff; }
-  .badge-init { background: #1976d2; }
-  .badge-update { background: #fbc02d; color: #333; }
-  .badge-unknown { background: #9e9e9e; }
+  .badge { display: inline-block; padding: calc(var(--spacing-unit) * 0.5) var(--spacing-unit); border-radius: var(--border-radius); font-size: 11px; font-weight: bold; color: #fff; }
+  .badge-init { background: var(--cbi-badge-init-background-color); }
+  .badge-update { background: var(--cbi-badge-update-background-color); color: #333; }
+  .badge-unknown { background: var(--cbi-badge-unknown-background-color); }
   
   .state-change { font-family: monospace; }
-  .state-old { color: #d32f2f; text-decoration: line-through; margin-right: 5px; }
+  .state-old { color: #d32f2f; text-decoration: line-through; margin-right: var(--spacing-unit); }
   .state-new { color: #388e3c; font-weight: bold; }
 </style>
 
@@ -191,7 +239,7 @@ local current_file = "iface.log"
 
                 interfacesToRender.forEach(function(iface){
                     var info = realtimeStatus ? realtimeStatus[iface] : latest[iface];
-                    var speedText = 'Unknown';
+                    var speedText = '<%:Unknown%>';
                     var linkUp = false;
 
                     if (info) {
@@ -237,10 +285,57 @@ local current_file = "iface.log"
             }
 
             fetchInitialStatus();
+            filterConfiguredInterfaces();
         }
     };
     xhr.send();
     
+    function filterConfiguredInterfaces() {
+        fetch('<%=luci.dispatcher.build_url("admin/status/interface_monitor/get_configured_interfaces")%>')
+            .then(response => response.json())
+            .then(configuredInterfaces => {
+                if (!Array.isArray(configuredInterfaces) || configuredInterfaces.length === 0) {
+                    return; // Show all if nothing is configured
+                }
+
+                const portGrid = document.getElementById('portGrid');
+                const ifaceSelect = document.getElementById('iface_select');
+                const allPortCards = Array.from(portGrid.querySelectorAll('.port-card'));
+                const allOptions = Array.from(ifaceSelect.options);
+                const configuredSet = new Set(configuredInterfaces);
+
+                const filterElements = (showAll) => {
+                    allPortCards.forEach(card => {
+                        const portName = card.querySelector('.port-name').innerText;
+                        card.style.display = (showAll || configuredSet.has(portName)) ? 'flex' : 'none';
+                    });
+                    allOptions.forEach(option => {
+                        if (option.value !== 'all') {
+                            option.style.display = (showAll || configuredSet.has(option.value)) ? 'block' : 'none';
+                        }
+                    });
+                };
+
+                // Initial filter
+                filterElements(false);
+
+                // Add toggle switch
+                const controls = document.querySelector('.controls');
+                const toggleGroup = document.createElement('div');
+                toggleGroup.className = 'control-group';
+                toggleGroup.innerHTML = `
+                    <label for="show_all_toggle"><%:Show All Interfaces%></label>
+                    <input type="checkbox" id="show_all_toggle" style="width: auto; margin-top: 4px;">
+                `;
+                controls.insertBefore(toggleGroup, controls.children[1]);
+
+                document.getElementById('show_all_toggle').addEventListener('change', function() {
+                    filterElements(this.checked);
+                });
+            })
+            .catch(error => console.error('Error fetching configured interfaces:', error));
+    }
+
     window.clearHistory = function() {
         if(confirm('<%:Are you sure you want to delete all history logs?%>')) {
             var xhr = new XMLHttpRequest();
