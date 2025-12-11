@@ -180,31 +180,29 @@ local current_file = "iface.log"
                 }
             }
             
-            renderPortGrid();
             renderTable('all');
 
-            function renderPortGrid() {
-                var latest = {};
-                for(var i = 0; i < events.length; i++) {
-                    var e = events[i];
-                    latest[e.iface] = { ts: e.ts, state: e.state };
-                }
+            function renderPortGrid(realtimeStatus) {
                 var grid = document.getElementById('portGrid');
                 grid.innerHTML = '';
-                var sortedIfaces2 = Array.from(interfaces).sort();
-                sortedIfaces2.forEach(function(iface){
-                    var info = latest[iface];
-                    var speedText = '未知';
+
+                var interfacesToRender = realtimeStatus ? Object.keys(realtimeStatus) : Array.from(interfaces);
+                interfacesToRender.sort();
+
+                interfacesToRender.forEach(function(iface){
+                    var info = realtimeStatus ? realtimeStatus[iface] : latest[iface];
+                    var speedText = 'Unknown';
                     var linkUp = false;
-                    if(info && info.state) {
-                        var parts = info.state.split(' ');
-                        var raw = parts[0] || '';
-                        var link = parts[1] || '';
-                        linkUp = link.toLowerCase() === 'yes';
-                        if(raw) {
-                            speedText = raw.replace('Mb/s','') + ' Mbit/s';
+
+                    if (info) {
+                        linkUp = info.up || false;
+                        if (linkUp && info.speed) {
+                            speedText = info.speed + ' Mbit/s';
+                        } else if (!linkUp) {
+                            speedText = 'Disconnected';
                         }
                     }
+
                     var card = document.createElement('div');
                     card.className = 'port-card';
                     var icon = document.createElement('div');
@@ -215,7 +213,7 @@ local current_file = "iface.log"
                     icon.appendChild(dot);
                     var speed = document.createElement('div');
                     speed.className = 'port-speed';
-                    speed.innerText = linkUp ? speedText : '已断开';
+                    speed.innerText = speedText;
                     var name = document.createElement('div');
                     name.className = 'port-name';
                     name.innerText = iface;
@@ -225,6 +223,20 @@ local current_file = "iface.log"
                     grid.appendChild(card);
                 });
             }
+
+            function fetchInitialStatus() {
+                var statusXhr = new XMLHttpRequest();
+                statusXhr.open('GET', '<%=luci.dispatcher.build_url("admin/status/interface_monitor/get_interface_status")%>', true);
+                statusXhr.onload = function() {
+                    if (statusXhr.status === 200) {
+                        var status = JSON.parse(statusXhr.responseText);
+                        renderPortGrid(status);
+                    }
+                };
+                statusXhr.send();
+            }
+
+            fetchInitialStatus();
         }
     };
     xhr.send();

@@ -36,7 +36,8 @@ define Package/luci-app-interface-monitor/install
 	$(INSTALL_DATA) ./files/usr/lib/lua/luci/view/interface_monitor/graph.htm $(1)/usr/lib/lua/luci/view/interface_monitor/graph.htm
 	$(INSTALL_DATA) ./files/usr/lib/lua/luci/view/interface_monitor/iface.htm $(1)/usr/lib/lua/luci/view/interface_monitor/iface.htm
 
-	$(CP) ./htdocs/* $(1)/
+	$(INSTALL_DIR) $(1)/www/luci-static/resources/interface-monitor
+	$(CP) ./htdocs/luci-static/resources/interface-monitor/* $(1)/www/luci-static/resources/interface-monitor/
 endef
 
 $(eval $(call BuildPackage,luci-app-interface-monitor))

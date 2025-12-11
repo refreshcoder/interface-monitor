@@ -51,7 +51,6 @@ local current_file = "conn.log"
 </div>
 
 <script type="text/javascript">
-  var rpc = require('luci.rpc');
   var chartInstance = null;
   var rawData = [];
 
@@ -62,21 +61,28 @@ local current_file = "conn.log"
       return;
     }
 
-    rpc.call('admin.interface_monitor', 'get_log_data', { file: file }, function(data) {
-      if (data) {
-        rawData = data;
-        document.addEventListener('DOMContentLoaded', function() {
-          if (window.echarts) {
-            chartInstance = echarts.init(document.getElementById('chart'));
-            updateChart();
-          } else {
-            console.error('ECharts library not loaded.');
-          }
-        });
-      } else {
-        document.getElementById('chart').innerHTML = '<p><%:Failed to load log data.%></p>';
-      }
-    });
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '<%=luci.dispatcher.build_url("admin/status/interface_monitor/get_log_data")%>?file=' + file, true);
+    xhr.onload = function() {
+        if (xhr.status === 200) {
+            try {
+                var data = JSON.parse(xhr.responseText);
+                rawData = data;
+                if (window.echarts) {
+                    chartInstance = echarts.init(document.getElementById('chart'));
+                    updateChart();
+                } else {
+                    console.error('ECharts library not loaded.');
+                }
+            } catch (e) {
+                console.error('Failed to parse log data:', e);
+                document.getElementById('chart').innerHTML = '<p><%:Failed to parse log data.%></p>';
+            }
+        } else {
+            document.getElementById('chart').innerHTML = '<p><%:Failed to load log data.%></p>';
+        }
+    };
+    xhr.send();
   }
 
   function parseData() {
