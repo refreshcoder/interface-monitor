@@ -4,31 +4,25 @@
 local fs = require "nixio.fs"
 local http = require "luci.http"
 local log_dir = "/tmp/log/interface_monitor"
-local files = {}
-for f in fs.dir(log_dir) do
-    if f:match("%.log$") or f:match("%.log%.old$") then
-        table.insert(files, f)
+local log_sources = { "iface.log", "conn.log" }
+local current_file = http.formvalue("file") or log_sources[1]
+
+-- Security check
+local is_valid_file = false
+for _, f in ipairs(log_sources) do
+    if f == current_file then
+        is_valid_file = true
+        break
     end
 end
-table.sort(files, function(a,b) return a > b end) -- Newest first
-
-local current_file = http.formvalue("file") or files[1]
+if not is_valid_file then current_file = log_sources[1] end
 local content = ""
 local lines_per_page = 100
 local page = tonumber(http.formvalue("page")) or 1
 local total_lines = 0
 local total_pages = 0
 
--- Security check: ensure current_file is in the allowed file list
-local is_valid_file = false
-for _, f in ipairs(files) do
-    if f == current_file then
-        is_valid_file = true
-        break
-    end
-end
-
-if is_valid_file and fs.access(log_dir .. "/" .. current_file) then
+if current_file and fs.access(log_dir .. "/" .. current_file) then
     local fp = io.open(log_dir .. "/" .. current_file, "r")
     if fp then
         for _ in fp:lines() do
@@ -63,9 +57,9 @@ end
 <div class="cbi-section">
     <div class="cbi-section-descr">
         <form action="<%=luci.dispatcher.build_url('admin/status/interface_monitor/logs')%>" method="get">
-            <label><%:Select Log File:%>
+            <label><%:Select Log Source:%>
                 <select name="file" onchange="this.form.submit()">
-                    <% for _,f in ipairs(files) do %>
+                    <% for _,f in ipairs(log_sources) do %>
                         <option value="<%=f%>" <%=f == current_file and "selected" or ""%>><%=f%></option>
                     <% end %>
                 </select>

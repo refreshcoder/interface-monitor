@@ -44,9 +44,9 @@ check_interfaces() {
         if [ -z "$old_state" ]; then
             echo "$interface $new_state" >> "$state_file"
             if [ "$log_format" = "jsonl" ]; then
-                echo "{\"ts\":\"$ts\",\"schema_version\":1,\"source\":\"iface\",\"interface\":\"$interface\",\"event\":\"init\",\"old\":{\"speed\":\"none\",\"link\":\"none\",\"duplex\":\"none\"},\"new\":{\"speed\":\"$speed\",\"link\":\"$link_status\",\"duplex\":\"$duplex\"}}" >> "$events_log_file"
+                echo "{\"ts\":\"$ts\",\"schema_version\":1,\"source\":\"iface\",\"interface\":\"$interface\",\"event\":\"init\",\"old\":{\"speed\":\"none\",\"link\":\"none\",\"duplex\":\"none\"},\"new\":{\"speed\":\"$speed\",\"link\":\"$link_status\",\"duplex\":\"$duplex\"}}" >> "$log_file"
             else
-                echo "ts=$ts|source=iface|schema_version=1|interface=$interface|event=init|old.speed=none|old.link=none|old.duplex=none|new.speed=$speed|new.link=$link_status|new.duplex=$duplex" >> "$events_log_file"
+                echo "ts=$ts|source=iface|schema_version=1|interface=$interface|event=init|old.speed=none|old.link=none|old.duplex=none|new.speed=$speed|new.link=$link_status|new.duplex=$duplex" >> "$log_file"
             fi
         elif [ "$new_state" != "$old_state" ]; then
             old_speed=$(echo "$old_state" | awk '{print $1}')
@@ -67,15 +67,15 @@ check_interfaces() {
                 ev="duplex_change"
             fi
             if [ "$log_format" = "jsonl" ]; then
-                echo "{\"ts\":\"$ts\",\"schema_version\":1,\"source\":\"iface\",\"interface\":\"$interface\",\"event\":\"$ev\",\"old\":{\"speed\":\"$old_speed\",\"link\":\"$old_link\",\"duplex\":\"$old_duplex\"},\"new\":{\"speed\":\"$speed\",\"link\":\"$link_status\",\"duplex\":\"$duplex\"}}" >> "$events_log_file"
+                echo "{\"ts\":\"$ts\",\"schema_version\":1,\"source\":\"iface\",\"interface\":\"$interface\",\"event\":\"$ev\",\"old\":{\"speed\":\"$old_speed\",\"link\":\"$old_link\",\"duplex\":\"$old_duplex\"},\"new\":{\"speed\":\"$speed\",\"link\":\"$link_status\",\"duplex\":\"$duplex\"}}" >> "$log_file"
             else
                 echo "ts=$ts|source=iface|schema_version=1|interface=$interface|event=$ev|old.speed=$old_speed|old.link=$old_link|old.duplex=$old_duplex|new.speed=$speed|new.link=$link_status|new.duplex=$duplex" >> "$events_log_file"
             fi
         fi
         if [ "$log_format" = "jsonl" ]; then
-            echo "{\"ts\":\"$ts\",\"schema_version\":1,\"source\":\"iface\",\"interface\":\"$interface\",\"link\":\"$link_status\",\"speed\":\"$speed\",\"duplex\":\"$duplex\"}" >> "$metrics_log_file"
+            echo "{\"ts\":\"$ts\",\"schema_version\":1,\"source\":\"iface\",\"interface\":\"$interface\",\"link\":\"$link_status\",\"speed\":\"$speed\",\"duplex\":\"$duplex\"}" >> "$log_file"
         else
-            echo "ts=$ts|source=iface|schema_version=1|interface=$interface|link=$link_status|speed=$speed|duplex=$duplex" >> "$metrics_log_file"
+            echo "ts=$ts|source=iface|schema_version=1|interface=$interface|link=$link_status|speed=$speed|duplex=$duplex" >> "$log_file"
         fi
     done
 }
@@ -89,24 +89,14 @@ if ! command -v ethtool >/dev/null 2>&1; then
     exit 1
 fi
 
-# Initialize log file
-current_date=$(date +"%Y-%m-%d")
-metrics_log_file="$LOG_DIR/iface_metrics_$current_date.log"
-events_log_file="$LOG_DIR/iface_events_$current_date.log"
+log_file="$LOG_DIR/iface.log"
 
 # Check interface state every interval
 while true; do
     new_date=$(date +"%Y-%m-%d")
 
     # If the date has changed, update the log file path
-    if [ "$new_date" != "$current_date" ]; then
-        current_date=$new_date
-        metrics_log_file="$LOG_DIR/iface_metrics_$current_date.log"
-        events_log_file="$LOG_DIR/iface_events_$current_date.log"
-    fi
-    
-    check_log_rotation "$metrics_log_file"
-    check_log_rotation "$events_log_file"
+check_log_rotation "$log_file"
 
     # Read config from UCI
     # Extract all quoted values from interfaces list

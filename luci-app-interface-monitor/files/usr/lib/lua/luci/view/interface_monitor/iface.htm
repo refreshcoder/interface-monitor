@@ -31,31 +31,15 @@
 <h2><%:Interface Monitor%></h2>
 
 <%
-local fs = require "nixio.fs"
 local http = require "luci.http"
-local log_dir = "/tmp/log/interface_monitor"
-local files = {}
-for f in fs.dir(log_dir) do
-    if f:match("^iface_.*%.log$") then
-        table.insert(files, f)
-    end
-end
-table.sort(files, function(a,b) return a > b end)
-local current_file = http.formvalue("file") or files[1]
+local current_file = "iface.log"
 %>
 
 <div class="cbi-section">
   <div class="modern-card">
     <form method="get" action="<%=luci.dispatcher.build_url('admin/status/interface_monitor/iface')%>">
       <div class="controls">
-        <div class="control-group">
-          <label><%:Log File%></label>
-          <select name="file" onchange="this.form.submit()">
-            <% for _,f in ipairs(files) do %>
-              <option value="<%=f%>" <%=f==current_file and "selected" or ""%>><%=f%></option>
-            <% end %>
-          </select>
-        </div>
+
         <div class="control-group">
           <label><%:Filter Interface%></label>
           <select id="iface_select">

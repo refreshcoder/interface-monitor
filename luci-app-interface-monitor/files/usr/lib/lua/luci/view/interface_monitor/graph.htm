@@ -17,16 +17,8 @@
 <h2><%:Connectivity Monitor%></h2>
 
 <%
-local fs = require "nixio.fs"
-local log_dir = "/tmp/log/interface_monitor"
-local files = {}
-for f in fs.dir(log_dir) do
-    if f:match("^conn_.*\\.log$") then
-        table.insert(files, f)
-    end
-end
-table.sort(files, function(a,b) return a > b end)
-local current_file = http.formvalue("file") or files[1]
+local http = require "luci.http"
+local current_file = "conn.log"
 %>
 
 <script src="<%=resource%>/interface-monitor/echarts.min.js"></script>
@@ -35,14 +27,7 @@ local current_file = http.formvalue("file") or files[1]
   <div class="modern-card">
     <form method="get" action="<%=luci.dispatcher.build_url('admin/status/interface_monitor/graph')%>" id="filterForm">
       <div class="controls">
-        <div class="control-group">
-          <label><%:Log File%></label>
-          <select name="file" onchange="this.form.submit()">
-            <% for _,f in ipairs(files) do %>
-              <option value="<%=f%>" <%=f==current_file and "selected" or ""%>><%=f%></option>
-            <% end %>
-          </select>
-        </div>
+
         <div class="control-group">
           <label><%:Time Range%></label>
           <select name="range" id="rangeSelect" onchange="updateChart()">

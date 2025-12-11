@@ -10,9 +10,7 @@ state_file="/tmp/connectivity_state"
 # Delay start
 sleep 10
 
-current_date=$(date +"%Y-%m-%d")
-metrics_log_file="$LOG_DIR/conn_metrics_$current_date.log"
-events_log_file="$LOG_DIR/conn_events_$current_date.log"
+log_file="$LOG_DIR/conn.log"
 
 check_log_rotation() {
     local file="$1"
@@ -26,16 +24,7 @@ check_log_rotation() {
 }
 
 while true; do
-    # rotate daily log file
-    new_date=$(date +"%Y-%m-%d")
-    if [ "$new_date" != "$current_date" ]; then
-        current_date=$new_date
-        metrics_log_file="$LOG_DIR/conn_metrics_$current_date.log"
-        events_log_file="$LOG_DIR/conn_events_$current_date.log"
-    fi
-    
-    check_log_rotation "$metrics_log_file"
-    check_log_rotation "$events_log_file"
+    check_log_rotation "$log_file"
 
     enable=$(uci -q get interface_monitor.settings.connectivity_enable)
     log_format=$(uci -q get interface_monitor.settings.log_format)
@@ -176,9 +165,9 @@ while true; do
             status="$status_eval"
 
             if [ "$log_format" = "jsonl" ]; then
-                echo "{\"ts\":\"$ts\",\"schema_version\":1,\"source\":\"connectivity\",\"ip\":\"$target_ip\",\"mac\":\"$mac\",\"hostname\":\"$hostname\",\"iface\":\"$target_iface\",\"phy_iface\":\"$phy_iface\",\"status\":\"$status\",\"probe_method\":\"$probe_used\",\"samples\":3,\"rtt_ms_avg\":$rtt_avg,\"loss_pct\":$loss_str,\"thresholds\":{\"rtt_warn_ms\":$rtt_warn,\"rtt_bad_ms\":$rtt_bad,\"loss_warn_pct\":$loss_warn,\"loss_bad_pct\":$loss_bad}}" >> "$metrics_log_file"
+                echo "{\"ts\":\"$ts\",\"schema_version\":1,\"source\":\"connectivity\",\"ip\":\"$target_ip\",\"mac\":\"$mac\",\"hostname\":\"$hostname\",\"iface\":\"$target_iface\",\"phy_iface\":\"$phy_iface\",\"status\":\"$status\",\"probe_method\":\"$probe_used\",\"samples\":3,\"rtt_ms_avg\":$rtt_avg,\"loss_pct\":$loss_str,\"thresholds\":{\"rtt_warn_ms\":$rtt_warn,\"rtt_bad_ms\":$rtt_bad,\"loss_warn_pct\":$loss_warn,\"loss_bad_pct\":$loss_bad}}" >> "$log_file"
             else
-                echo "ts=$ts|source=connectivity|schema_version=1|ip=$target_ip|mac=$mac|hostname=$hostname|iface=$target_iface|phy_iface=$phy_iface|status=$status|probe_method=$probe_used|samples=3|rtt_ms_avg=$rtt_avg|loss_pct=$loss_str|thresholds.rtt_warn_ms=$rtt_warn|thresholds.rtt_bad_ms=$rtt_bad|thresholds.loss_warn_pct=$loss_warn|thresholds.loss_bad_pct=$loss_bad" >> "$metrics_log_file"
+                echo "ts=$ts|source=connectivity|schema_version=1|ip=$target_ip|mac=$mac|hostname=$hostname|iface=$target_iface|phy_iface=$phy_iface|status=$status|probe_method=$probe_used|samples=3|rtt_ms_avg=$rtt_avg|loss_pct=$loss_str|thresholds.rtt_warn_ms=$rtt_warn|thresholds.rtt_bad_ms=$rtt_bad|thresholds.loss_warn_pct=$loss_warn|thresholds.loss_bad_pct=$loss_bad" >> "$log_file"
             fi
             
             # Update state file
