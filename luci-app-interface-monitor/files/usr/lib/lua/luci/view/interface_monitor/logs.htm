@@ -14,6 +14,10 @@ table.sort(files, function(a,b) return a > b end) -- Newest first
 
 local current_file = http.formvalue("file") or files[1]
 local content = ""
+local lines_per_page = 100
+local page = tonumber(http.formvalue("page")) or 1
+local total_lines = 0
+local total_pages = 0
 
 -- Security check: ensure current_file is in the allowed file list
 local is_valid_file = false
@@ -27,7 +31,28 @@ end
 if is_valid_file and fs.access(log_dir .. "/" .. current_file) then
     local fp = io.open(log_dir .. "/" .. current_file, "r")
     if fp then
-        content = fp:read("*a")
+        for _ in fp:lines() do
+            total_lines = total_lines + 1
+        end
+        fp:close()
+
+        total_pages = math.ceil(total_lines / lines_per_page)
+        if page > total_pages then page = total_pages end
+        if page < 1 then page = 1 end
+
+        local start_line = (page - 1) * lines_per_page + 1
+        local end_line = start_line + lines_per_page - 1
+        local current_line = 0
+        
+        fp = io.open(log_dir .. "/" .. current_file, "r")
+        local lines_to_read = {}
+        for line in fp:lines() do
+            current_line = current_line + 1
+            if current_line >= start_line and current_line <= end_line then
+                table.insert(lines_to_read, line)
+            end
+        end
+        content = table.concat(lines_to_read, "\n")
         fp:close()
     end
 else
@@ -52,6 +77,15 @@ end
     <% if current_file then %>
     <h3><%=current_file%></h3>
     <textarea style="width: 100%; height: 600px; font-family: monospace;" readonly="readonly" wrap="off"><%=content%></textarea>
+    <div class="cbi-pagination">
+        <% if page > 1 then %>
+            <a href="<%=luci.dispatcher.build_url('admin/status/interface_monitor/logs')%>?file=<%=current_file%>&page=<%=page-1%>">« Previous</a>
+        <% end %>
+        <span>Page <%=page%> of <%=total_pages%></span>
+        <% if page < total_pages then %>
+            <a href="<%=luci.dispatcher.build_url('admin/status/interface_monitor/logs')%>?file=<%=current_file%>&page=<%=page+1%>">Next »</a>
+        <% end %>
+    </div>
     <% else %>
     <p><%:No log files found.%></p>
     <% end %>

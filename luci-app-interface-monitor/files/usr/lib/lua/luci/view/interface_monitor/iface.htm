@@ -42,14 +42,6 @@ for f in fs.dir(log_dir) do
 end
 table.sort(files, function(a,b) return a > b end)
 local current_file = http.formvalue("file") or files[1]
-local content = ""
-if current_file and fs.access(log_dir .. "/" .. current_file) then
-    local fp = io.open(log_dir .. "/" .. current_file, "r")
-    if fp then
-        content = fp:read("*a")
-        fp:close()
-    end
-end
 %>
 
 <div class="cbi-section">
@@ -88,8 +80,6 @@ end
       <tbody id="eventBody">
       </tbody>
     </table>
-    
-    <textarea id="raw" style="display:none"><%=content%></textarea>
     <% else %>
     <p><%:No interface log found.%></p>
     <% end %>
@@ -98,112 +88,162 @@ end
 
 <script>
 (function(){
-    var raw = document.getElementById('raw').value.split('\n');
-    var events = [];
-    var interfaces = new Set();
-    
-    for(var i=0; i<raw.length; i++){
-        var line = raw[i];
-        if(!line) continue;
-        
-        var ts, iface, event, details;
-        var parts = line.split('|');
-        
-        if (parts.length >= 5) {
-            // New Format: Timestamp|Interface|Event|OldState|NewState
-            ts = parts[0];
-            iface = parts[1];
-            event = parts[2];
-            var oldState = parts[3];
-            var newState = parts[4];
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '<%=luci.dispatcher.build_url("admin/status/interface_monitor/get_log_data")%>?file=<%=current_file%>', true);
+    xhr.onload = function() {
+        if (xhr.status === 200) {
+            var raw = JSON.parse(xhr.responseText);
+            var events = [];
+            var interfaces = new Set();
             
-            if(oldState === 'none') {
-                details = '<span class="state-new">' + newState + '</span>';
-            } else {
-                details = '<span class="state-old">' + oldState + '</span> <span class="state-new">' + newState + '</span>';
-            }
-        } else {
-            // Old Regex Format fallback
-            var m = line.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) State (\w+) (\S+) changed from (.*) to (.*)/);
-            if(m) {
-                ts = m[1];
-                event = m[2]; 
-                iface = m[3];
-                var os = m[4];
-                var ns = m[5];
-                if(os === 'no state') {
-                    details = '<span class="state-new">' + ns + '</span>';
+            for(var i=0; i<raw.length; i++){
+                var line = raw[i];
+                if(!line) continue;
+                
+                var ts, iface, event, details;
+                var parts = line.split('|');
+                
+                if (parts.length >= 5) {
+                    // New Format: Timestamp|Interface|Event|OldState|NewState
+                    ts = parts[0];
+                    iface = parts[1];
+                    event = parts[2];
+                    var oldState = parts[3];
+                    var newState = parts[4];
+                    
+                    if(oldState === 'none') {
+                        details = '<span class="state-new">' + newState + '</span>';
+                    } else {
+                        details = '<span class="state-old">' + oldState + '</span> <span class="state-new">' + newState + '</span>';
+                    }
                 } else {
-                    details = '<span class="state-old">' + os + '</span> <span class="state-new">' + ns + '</span>';
+                    // Old Regex Format fallback
+                    var m = line.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) State (\w+) (\S+) changed from (.*) to (.*)/);
+                    if(m) {
+                        ts = m[1];
+                        event = m[2]; 
+                        iface = m[3];
+                        var os = m[4];
+                        var ns = m[5];
+                        if(os === 'no state') {
+                            details = '<span class="state-new">' + ns + '</span>';
+                        } else {
+                            details = '<span class="state-old">' + os + '</span> <span class="state-new">' + ns + '</span>';
+                        }
+                    } else {
+                        continue;
+                    }
                 }
-            } else {
-                continue;
+                
+                events.push({ts: ts, iface: iface, event: event, details: details, state: newState});
+                interfaces.add(iface);
+            }
+            
+            // Populate Interface Select
+            var ifaceSelect = document.getElementById('iface_select');
+            var sortedIfaces = Array.from(interfaces).sort();
+            sortedIfaces.forEach(function(iface){
+                var opt = document.createElement('option');
+                opt.value = iface;
+                opt.text = iface;
+                ifaceSelect.add(opt);
+            });
+            
+            ifaceSelect.addEventListener('change', function(){
+                renderTable(this.value);
+            });
+            
+            var tbody = document.getElementById('eventBody');
+            
+            function renderTable(filterIface) {
+                tbody.innerHTML = '';
+                
+                // Reverse order (newest first)
+                for(var i = events.length - 1; i >= 0; i--) {
+                    var e = events[i];
+                    if(filterIface !== 'all' && e.iface !== filterIface) continue;
+                    
+                    var tr = document.createElement('tr');
+                    
+                    var tdTs = document.createElement('td');
+                    tdTs.innerText = e.ts;
+                    tr.appendChild(tdTs);
+                    
+                    var tdIface = document.createElement('td');
+                    tdIface.innerText = e.iface;
+                    tdIface.style.fontWeight = 'bold';
+                    tr.appendChild(tdIface);
+                    
+                    var tdEvent = document.createElement('td');
+                    var badgeClass = 'badge-unknown';
+                    if(e.event === 'init' || e.event === 'initialization') badgeClass = 'badge-init';
+                    if(e.event === 'update') badgeClass = 'badge-update';
+                    tdEvent.innerHTML = '<span class="badge ' + badgeClass + '">' + e.event + '</span>';
+                    tr.appendChild(tdEvent);
+                    
+                    var tdDetails = document.createElement('td');
+                    tdDetails.innerHTML = e.details;
+                    tdDetails.className = 'state-change';
+                    tr.appendChild(tdDetails);
+                    
+                    tbody.appendChild(tr);
+                }
+                
+                if(tbody.children.length === 0) {
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = '<td colspan="4" style="text-align:center; color:#999">No events found</td>';
+                    tbody.appendChild(tr);
+                }
+            }
+            
+            renderPortGrid();
+            renderTable('all');
+
+            function renderPortGrid() {
+                var latest = {};
+                for(var i = 0; i < events.length; i++) {
+                    var e = events[i];
+                    latest[e.iface] = { ts: e.ts, state: e.state };
+                }
+                var grid = document.getElementById('portGrid');
+                grid.innerHTML = '';
+                var sortedIfaces2 = Array.from(interfaces).sort();
+                sortedIfaces2.forEach(function(iface){
+                    var info = latest[iface];
+                    var speedText = '未知';
+                    var linkUp = false;
+                    if(info && info.state) {
+                        var parts = info.state.split(' ');
+                        var raw = parts[0] || '';
+                        var link = parts[1] || '';
+                        linkUp = link.toLowerCase() === 'yes';
+                        if(raw) {
+                            speedText = raw.replace('Mb/s','') + ' Mbit/s';
+                        }
+                    }
+                    var card = document.createElement('div');
+                    card.className = 'port-card';
+                    var icon = document.createElement('div');
+                    icon.className = 'port-icon';
+                    var dot = document.createElement('div');
+                    dot.className = 'port-status-dot';
+                    dot.style.background = linkUp ? '#4caf50' : '#9e9e9e';
+                    icon.appendChild(dot);
+                    var speed = document.createElement('div');
+                    speed.className = 'port-speed';
+                    speed.innerText = linkUp ? speedText : '已断开';
+                    var name = document.createElement('div');
+                    name.className = 'port-name';
+                    name.innerText = iface;
+                    card.appendChild(icon);
+                    card.appendChild(speed);
+                    card.appendChild(name);
+                    grid.appendChild(card);
+                });
             }
         }
-        
-        events.push({ts: ts, iface: iface, event: event, details: details, state: newState});
-        interfaces.add(iface);
-    }
-    
-    // Populate Interface Select
-    var ifaceSelect = document.getElementById('iface_select');
-    var sortedIfaces = Array.from(interfaces).sort();
-    sortedIfaces.forEach(function(iface){
-        var opt = document.createElement('option');
-        opt.value = iface;
-        opt.text = iface;
-        ifaceSelect.add(opt);
-    });
-    
-    ifaceSelect.addEventListener('change', function(){
-        renderTable(this.value);
-    });
-    
-    var tbody = document.getElementById('eventBody');
-    
-    function renderTable(filterIface) {
-        tbody.innerHTML = '';
-        
-        // Reverse order (newest first)
-        for(var i = events.length - 1; i >= 0; i--) {
-            var e = events[i];
-            if(filterIface !== 'all' && e.iface !== filterIface) continue;
-            
-            var tr = document.createElement('tr');
-            
-            var tdTs = document.createElement('td');
-            tdTs.innerText = e.ts;
-            tr.appendChild(tdTs);
-            
-            var tdIface = document.createElement('td');
-            tdIface.innerText = e.iface;
-            tdIface.style.fontWeight = 'bold';
-            tr.appendChild(tdIface);
-            
-            var tdEvent = document.createElement('td');
-            var badgeClass = 'badge-unknown';
-            if(e.event === 'init' || e.event === 'initialization') badgeClass = 'badge-init';
-            if(e.event === 'update') badgeClass = 'badge-update';
-            tdEvent.innerHTML = '<span class="badge ' + badgeClass + '">' + e.event + '</span>';
-            tr.appendChild(tdEvent);
-            
-            var tdDetails = document.createElement('td');
-            tdDetails.innerHTML = e.details;
-            tdDetails.className = 'state-change';
-            tr.appendChild(tdDetails);
-            
-            tbody.appendChild(tr);
-        }
-        
-        if(tbody.children.length === 0) {
-            var tr = document.createElement('tr');
-            tr.innerHTML = '<td colspan="4" style="text-align:center; color:#999">No events found</td>';
-            tbody.appendChild(tr);
-        }
-    }
-    
-    renderPortGrid();
-    renderTable('all');
+    };
+    xhr.send();
     
     window.clearHistory = function() {
         if(confirm('<%:Are you sure you want to delete all history logs?%>')) {
@@ -223,45 +263,3 @@ end
 })();
 </script>
 <%+footer%>
-    function renderPortGrid() {
-        var latest = {};
-        for(var i = 0; i < events.length; i++) {
-            var e = events[i];
-            latest[e.iface] = { ts: e.ts, state: e.state };
-        }
-        var grid = document.getElementById('portGrid');
-        grid.innerHTML = '';
-        var sortedIfaces2 = Array.from(interfaces).sort();
-        sortedIfaces2.forEach(function(iface){
-            var info = latest[iface];
-            var speedText = '未知';
-            var linkUp = false;
-            if(info && info.state) {
-                var parts = info.state.split(' ');
-                var raw = parts[0] || '';
-                var link = parts[1] || '';
-                linkUp = link.toLowerCase() === 'yes';
-                if(raw) {
-                    speedText = raw.replace('Mb/s','') + ' Mbit/s';
-                }
-            }
-            var card = document.createElement('div');
-            card.className = 'port-card';
-            var icon = document.createElement('div');
-            icon.className = 'port-icon';
-            var dot = document.createElement('div');
-            dot.className = 'port-status-dot';
-            dot.style.background = linkUp ? '#4caf50' : '#9e9e9e';
-            icon.appendChild(dot);
-            var speed = document.createElement('div');
-            speed.className = 'port-speed';
-            speed.innerText = linkUp ? speedText : '已断开';
-            var name = document.createElement('div');
-            name.className = 'port-name';
-            name.innerText = iface;
-            card.appendChild(icon);
-            card.appendChild(speed);
-            card.appendChild(name);
-            grid.appendChild(card);
-        });
-    }
