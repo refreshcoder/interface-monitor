@@ -16,46 +16,20 @@
 
 <h2><%:Connectivity Monitor%></h2>
 
-<script>
-  (function(){
-    var cdns = [
-      'https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js'
-    ];
-    function loadNext(i){
-      if (i >= cdns.length) {
-        return; // fallback handled later
-      }
-      var s = document.createElement('script');
-      s.src = cdns[i];
-      s.onload = function(){ window.__echarts_loaded = true; };
-      s.onerror = function(){ loadNext(i+1); };
-      document.head.appendChild(s);
-    }
-    loadNext(0);
-  })();
-</script>
-
 <%
 local fs = require "nixio.fs"
-local http = require "luci.http"
 local log_dir = "/tmp/log/interface_monitor"
 local files = {}
 for f in fs.dir(log_dir) do
-    if f:match("^conn_.*%.log$") then
+    if f:match("^conn_.*\\.log$") then
         table.insert(files, f)
     end
 end
 table.sort(files, function(a,b) return a > b end)
 local current_file = http.formvalue("file") or files[1]
-local content = ""
-if current_file and fs.access(log_dir .. "/" .. current_file) then
-    local fp = io.open(log_dir .. "/" .. current_file, "r")
-    if fp then
-        content = fp:read("*a")
-        fp:close()
-    end
-end
 %>
+
+<script src="<%=resource%>/interface-monitor/echarts.min.js"></script>
 
 <div class="cbi-section">
   <div class="modern-card">
@@ -85,25 +59,48 @@ end
     <% if current_file then %>
     <div id="deviceInfo" class="info-grid"></div>
     <div class="chart-container" id="chart"></div>
-    <textarea id="raw" style="display:none"><%=content%></textarea>
     <% else %>
     <p><%:No connectivity log found. Check if the service is running and configured.%></p>
     <% end %>
   </div>
 </div>
 
-<script>
+<script type="text/javascript">
+  var rpc = require('luci.rpc');
   var chartInstance = null;
+  var rawData = [];
+
+  function fetchDataAndRender() {
+    var file = '<%=current_file%>';
+    if (!file) {
+      document.getElementById('chart').innerHTML = '<p><%:No log file selected or available.%></p>';
+      return;
+    }
+
+    rpc.call('admin.interface_monitor', 'get_log_data', { file: file }, function(data) {
+      if (data) {
+        rawData = data;
+        document.addEventListener('DOMContentLoaded', function() {
+          if (window.echarts) {
+            chartInstance = echarts.init(document.getElementById('chart'));
+            updateChart();
+          } else {
+            console.error('ECharts library not loaded.');
+          }
+        });
+      } else {
+        document.getElementById('chart').innerHTML = '<p><%:Failed to load log data.%></p>';
+      }
+    });
+  }
 
   function parseData() {
-    var raw = document.getElementById('raw').value;
-    if (!raw) return {};
+    if (!rawData) return {};
 
-    var lines = raw.split('\n');
     var dataMap = {}; // ip -> { points: [], info: {} }
 
-    for (var i = 0; i < lines.length; i++) {
-      var line = lines[i].trim();
+    for (var i = 0; i < rawData.length; i++) {
+      var line = rawData[i].trim();
       if (!line) continue;
 
       var parts = line.split('|');
@@ -141,6 +138,8 @@ end
     }
     return dataMap;
   }
+
+  fetchDataAndRender();
 
   function updateChart() {
     var range = parseInt(document.getElementById('rangeSelect').value);

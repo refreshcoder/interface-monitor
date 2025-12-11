@@ -27,12 +27,16 @@ endef
 define Package/luci-app-interface-monitor/install
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/controller
 	$(INSTALL_DATA) ./files/usr/lib/lua/luci/controller/interface_monitor.lua $(1)/usr/lib/lua/luci/controller/interface_monitor.lua
+	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/controller/admin
+	$(INSTALL_DATA) ./files/usr/lib/lua/luci/controller/admin/interface_monitor.lua $(1)/usr/lib/lua/luci/controller/admin/interface_monitor.lua
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/model/cbi/interface_monitor
 	$(INSTALL_DATA) ./files/usr/lib/lua/luci/model/cbi/interface_monitor/config.lua $(1)/usr/lib/lua/luci/model/cbi/interface_monitor/config.lua
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/view/interface_monitor
 	$(INSTALL_DATA) ./files/usr/lib/lua/luci/view/interface_monitor/logs.htm $(1)/usr/lib/lua/luci/view/interface_monitor/logs.htm
 	$(INSTALL_DATA) ./files/usr/lib/lua/luci/view/interface_monitor/graph.htm $(1)/usr/lib/lua/luci/view/interface_monitor/graph.htm
 	$(INSTALL_DATA) ./files/usr/lib/lua/luci/view/interface_monitor/iface.htm $(1)/usr/lib/lua/luci/view/interface_monitor/iface.htm
+
+	$(CP) ./htdocs/* $(1)/
 endef
 
 $(eval $(call BuildPackage,luci-app-interface-monitor))
