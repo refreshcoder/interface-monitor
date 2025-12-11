@@ -94,38 +94,53 @@ local current_file = "conn.log"
       var line = rawData[i].trim();
       if (!line) continue;
 
-      var parts = line.split('|');
-      // Format: Timestamp|IP|Status|Loss|RTT|Interface|MAC|Hostname|PhyInterface
-      if (parts.length < 5) continue;
+      try {
+        var log = JSON.parse(line);
+        if (log.source !== 'connectivity') continue;
 
-      var ts = parts[0];
-      var ip = parts[1];
-      var status = parts[2];
-      var loss = parseFloat(parts[3]) || 0;
-      var rtt = parseFloat(parts[4]) || 0;
-      var iface = parts[5] || 'unknown';
-      var mac = parts[6] || 'unknown';
-      var hostname = parts[7] || 'unknown';
-      var phy = parts[8] || iface; // Fallback to logical if phy not found
+        var ip = log.ip;
+        if (!dataMap[ip]) {
+          dataMap[ip] = { points: [], info: { ip: ip, mac: 'unknown', hostname: 'unknown', iface: 'unknown', phy: 'unknown', up: 0, total: 0 } };
+        }
 
-      if (!dataMap[ip]) {
-        dataMap[ip] = { points: [], info: { ip: ip, mac: mac, hostname: hostname, iface: iface, phy: phy, up: 0, total: 0 } };
+        // Update latest info
+        if (log.mac) dataMap[ip].info.mac = log.mac;
+        if (log.hostname) dataMap[ip].info.hostname = log.hostname;
+        if (log.phy_iface) dataMap[ip].info.phy = log.phy_iface;
+        if (log.iface) dataMap[ip].info.iface = log.iface;
+        
+        dataMap[ip].info.total++;
+        if (log.status === 'up' || log.status === 'recovered') dataMap[ip].info.up++;
+
+        dataMap[ip].points.push({
+                        value: [new Date(log.ts), log.rtt_ms_avg || 0],
+                        loss: log.loss_pct || 0,
+          status: log.status,
+          info: dataMap[ip].info // Reference to current info state
+        });
+      } catch (e) {
+        // Fallback for old pipe-separated format, just in case
+        var parts = line.split('|');
+        if (parts.length < 5) continue;
+        var ts = parts[0];
+        var ip_old = parts[1];
+        var status_old = parts[2];
+        var loss_old = parseFloat(parts[3]) || 0;
+        var rtt_old = parseFloat(parts[4]) || 0;
+
+        if (!dataMap[ip_old]) {
+          dataMap[ip_old] = { points: [], info: { ip: ip_old, up: 0, total: 0 } };
+        }
+        dataMap[ip_old].info.total++;
+        if (status_old === 'up') dataMap[ip_old].info.up++;
+
+        dataMap[ip_old].points.push({
+          value: [new Date(ts.replace(' ', 'T')), rtt_old],
+          loss: loss_old,
+          status: status_old,
+          info: dataMap[ip_old].info
+        });
       }
-
-      // Update latest info
-      if (mac !== 'unknown') dataMap[ip].info.mac = mac;
-      if (hostname !== 'unknown') dataMap[ip].info.hostname = hostname;
-      if (phy !== 'unknown') dataMap[ip].info.phy = phy;
-      
-      dataMap[ip].info.total++;
-      if (status === 'up') dataMap[ip].info.up++;
-
-      dataMap[ip].points.push({
-        value: [ts, rtt],
-        loss: loss,
-        status: status,
-        info: dataMap[ip].info // Reference to current info state
-      });
     }
     return dataMap;
   }
