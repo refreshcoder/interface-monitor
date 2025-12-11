@@ -108,15 +108,12 @@ local current_file = "conn.log"
         if (xhr.status === 200) {
             try {
                 var data = JSON.parse(xhr.responseText);
-                rawData = data;
+                rawData = (data && data.logs) ? data.logs : [];
                 if (window.echarts) {
                     chartInstance = echarts.init(document.getElementById('chart'));
                     updateChart();
-                } else {
-                    console.error('ECharts library not loaded.');
                 }
             } catch (e) {
-                console.error('Failed to parse log data:', e);
                 document.getElementById('chart').innerHTML = '<p><%:Failed to parse log data.%></p>';
             }
         } else {

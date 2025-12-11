@@ -3,7 +3,7 @@ module("luci.controller.admin.interface_monitor", package.seeall)
 function index()
     entry({"admin", "status", "interface_monitor"}, alias("admin", "status", "interface_monitor", "iface"), _("Interface Monitor"), 90)
     entry({"admin", "status", "interface_monitor", "iface"}, template("interface_monitor/iface"), _("Interface"), 1)
-    entry({"admin", "status", "interface_monitor", "graph"}, template("interface_monitor/graph"), _("Connectivity Graph"), 2)
+    entry({"admin", "status", "interface_monitor", "graph"}, template("interface_monitor/graph"), _("Connectivity"), 2)
     entry({"admin", "status", "interface_monitor", "config"}, cbi("interface_monitor/config"), _("Config"), 3)
     entry({"admin", "status", "interface_monitor", "logs"}, template("interface_monitor/logs"), _("Logs"), 4)
 
@@ -16,14 +16,7 @@ end
 function get_configured_interfaces()
     local uci = require "luci.model.uci".cursor()
     local http = require "luci.http"
-    local interfaces = {}
-
-    uci:foreach("interface_monitor", "config", function(s)
-        if s.ifname then
-            table.insert(interfaces, s.ifname)
-        end
-    end)
-
+    local interfaces = uci:get_list("interface_monitor", "settings", "interfaces") or {}
     http.prepare_content("application/json")
     http.write_json(interfaces)
 end
@@ -43,7 +36,6 @@ function get_log_data()
     if file and fs.access(log_path) then
         local fp
         if since then
-            -- Optimization: Only read the last 200 lines for incremental updates
             local check_last_n = 200
             fp = io.popen(string.format("tail -n %d %s", check_last_n, log_path))
         else
@@ -70,7 +62,6 @@ function get_log_data()
     
     local start_index, end_index
     if since then
-        -- When 'since' is used, we return all new lines, ignoring pagination.
         start_index = 1
         end_index = total_lines
     else
@@ -79,11 +70,23 @@ function get_log_data()
     end
 
     if total_lines > 0 then
-        -- The frontend expects newest first, so we iterate backwards.
         for i = end_index, start_index, -1 do
             table.insert(logs_page, all_lines[i])
         end
     end
+
+function clear_logs()
+    local fs = require "nixio.fs"
+    local http = require "luci.http"
+    local log_dir = "/tmp/log/interface_monitor"
+    for f in fs.dir(log_dir) do
+        if f:match("%.log") then
+            fs.remove(log_dir .. "/" .. f)
+        end
+    end
+    http.prepare_content("application/json")
+    http.write_json({ result = "ok" })
+end
 
     local response = {
         logs = logs_page,
