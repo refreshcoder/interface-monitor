@@ -92,6 +92,25 @@
   .cbi-pagination a:hover {
     background-color: var(--cbi-button-background-color);
   }
+  #log-container {
+    height: 600px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background-color: var(--cbi-textarea-background-color);
+    color: var(--cbi-text-color);
+    border: 1px solid var(--cbi-border-color);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-unit);
+    font-family: monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  #log-container > div {
+    line-height: 1.4;
+    margin: 0;
+    padding: 0;
+  }
 </style>
 <h2><%:Interface Monitor Logs%></h2>
 <%
