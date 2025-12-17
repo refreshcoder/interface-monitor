@@ -44,9 +44,16 @@ check_interfaces() {
         if [ -z "$old_state" ]; then
             echo "$interface $new_state" >> "$state_file"
             if [ "$log_format" = "jsonl" ]; then
-                echo "{\"ts\":\"$ts\",\"schema_version\":1,\"source\":\"iface\",\"interface\":\"$interface\",\"event\":\"init\",\"old\":{\"speed\":\"none\",\"link\":\"none\",\"duplex\":\"none\"},\"new\":{\"speed\":\"$speed\",\"link\":\"$link_status\",\"duplex\":\"$duplex\"}}" >> "$log_file"
+                out_line="{\"ts\":\"$ts\",\"schema_version\":1,\"source\":\"iface\",\"interface\":\"$interface\",\"event\":\"init\",\"old\":{\"speed\":\"none\",\"link\":\"none\",\"duplex\":\"none\"},\"new\":{\"speed\":\"$speed\",\"link\":\"$link_status\",\"duplex\":\"$duplex\"}}"
+                echo "$out_line" >> "$log_file"
             else
-                echo "ts=$ts|source=iface|schema_version=1|interface=$interface|event=init|old.speed=none|old.link=none|old.duplex=none|new.speed=$speed|new.link=$link_status|new.duplex=$duplex" >> "$log_file"
+                out_line="ts=$ts|source=iface|schema_version=1|interface=$interface|event=init|old.speed=none|old.link=none|old.duplex=none|new.speed=$speed|new.link=$link_status|new.duplex=$duplex"
+                echo "$out_line" >> "$log_file"
+            fi
+            if [ "$db_enable" = "1" ] && command -v sqlite3 >/dev/null 2>&1; then
+                epoch=$(date +%s)
+                sqlite3 "$db_path" "CREATE TABLE IF NOT EXISTS logs (ts TEXT, ts_epoch INTEGER, source TEXT, line TEXT); CREATE INDEX IF NOT EXISTS idx_logs_source_ts ON logs(source, ts_epoch);"
+                sqlite3 "$db_path" "INSERT INTO logs (ts, ts_epoch, source, line) VALUES ('$ts','$epoch','iface','$out_line')"
             fi
         elif [ "$new_state" != "$old_state" ]; then
             old_speed=$(echo "$old_state" | awk '{print $1}')
@@ -67,15 +74,29 @@ check_interfaces() {
                 ev="duplex_change"
             fi
             if [ "$log_format" = "jsonl" ]; then
-                echo "{\"ts\":\"$ts\",\"schema_version\":1,\"source\":\"iface\",\"interface\":\"$interface\",\"event\":\"$ev\",\"old\":{\"speed\":\"$old_speed\",\"link\":\"$old_link\",\"duplex\":\"$old_duplex\"},\"new\":{\"speed\":\"$speed\",\"link\":\"$link_status\",\"duplex\":\"$duplex\"}}" >> "$log_file"
+                out_line="{\"ts\":\"$ts\",\"schema_version\":1,\"source\":\"iface\",\"interface\":\"$interface\",\"event\":\"$ev\",\"old\":{\"speed\":\"$old_speed\",\"link\":\"$old_link\",\"duplex\":\"$old_duplex\"},\"new\":{\"speed\":\"$speed\",\"link\":\"$link_status\",\"duplex\":\"$duplex\"}}"
+                echo "$out_line" >> "$log_file"
             else
-                echo "ts=$ts|source=iface|schema_version=1|interface=$interface|event=$ev|old.speed=$old_speed|old.link=$old_link|old.duplex=$old_duplex|new.speed=$speed|new.link=$link_status|new.duplex=$duplex" >> "$events_log_file"
+                out_line="ts=$ts|source=iface|schema_version=1|interface=$interface|event=$ev|old.speed=$old_speed|old.link=$old_link|old.duplex=$old_duplex|new.speed=$speed|new.link=$link_status|new.duplex=$duplex"
+                echo "$out_line" >> "$events_log_file"
+            fi
+            if [ "$db_enable" = "1" ] && command -v sqlite3 >/dev/null 2>&1; then
+                epoch=$(date +%s)
+                sqlite3 "$db_path" "CREATE TABLE IF NOT EXISTS logs (ts TEXT, ts_epoch INTEGER, source TEXT, line TEXT); CREATE INDEX IF NOT EXISTS idx_logs_source_ts ON logs(source, ts_epoch);"
+                sqlite3 "$db_path" "INSERT INTO logs (ts, ts_epoch, source, line) VALUES ('$ts','$epoch','iface','$out_line')"
             fi
         fi
         if [ "$log_format" = "jsonl" ]; then
-            echo "{\"ts\":\"$ts\",\"schema_version\":1,\"source\":\"iface\",\"interface\":\"$interface\",\"link\":\"$link_status\",\"speed\":\"$speed\",\"duplex\":\"$duplex\"}" >> "$log_file"
+            out_line="{\"ts\":\"$ts\",\"schema_version\":1,\"source\":\"iface\",\"interface\":\"$interface\",\"link\":\"$link_status\",\"speed\":\"$speed\",\"duplex\":\"$duplex\"}"
+            echo "$out_line" >> "$log_file"
         else
-            echo "ts=$ts|source=iface|schema_version=1|interface=$interface|link=$link_status|speed=$speed|duplex=$duplex" >> "$log_file"
+            out_line="ts=$ts|source=iface|schema_version=1|interface=$interface|link=$link_status|speed=$speed|duplex=$duplex"
+            echo "$out_line" >> "$log_file"
+        fi
+        if [ "$db_enable" = "1" ] && command -v sqlite3 >/dev/null 2>&1; then
+            epoch=$(date +%s)
+            sqlite3 "$db_path" "CREATE TABLE IF NOT EXISTS logs (ts TEXT, ts_epoch INTEGER, source TEXT, line TEXT); CREATE INDEX IF NOT EXISTS idx_logs_source_ts ON logs(source, ts_epoch);"
+            sqlite3 "$db_path" "INSERT INTO logs (ts, ts_epoch, source, line) VALUES ('$ts','$epoch','iface','$out_line')"
         fi
     done
 }
@@ -102,6 +123,12 @@ check_log_rotation "$log_file"
     # Extract all quoted values from interfaces list
     log_format=$(uci -q get interface_monitor.settings.log_format)
     [ -z "$log_format" ] && log_format="jsonl"
+    db_enable=$(uci -q get interface_monitor.settings.db_enable)
+    [ -z "$db_enable" ] && db_enable=0
+    db_path=$(uci -q get interface_monitor.settings.db_path)
+    [ -z "$db_path" ] && db_path="/etc/interface_monitor.db"
+    db_retention=$(uci -q get interface_monitor.settings.db_retention_days)
+    [ -z "$db_retention" ] && db_retention=30
     line=$(uci -q show interface_monitor.settings | grep "^interface_monitor.settings.interfaces=")
     interfaces=$(echo "$line" | grep -o "'[^']*'" | tr -d "'" | tr '\n' ' ' | tr -s ' ')
     interval=$(uci -q get interface_monitor.settings.monitor_interval)
@@ -109,6 +136,9 @@ check_log_rotation "$log_file"
     echo "$interval" | grep -Eq '^[0-9]+$' || interval=60
     [ "$interval" -lt 5 ] && interval=5
     find "$LOG_DIR" -type f -name "*.log*" -mtime +7 -delete
+    if [ "$db_enable" = "1" ] && command -v sqlite3 >/dev/null 2>&1; then
+        sqlite3 "$db_path" "DELETE FROM logs WHERE source='iface' AND ts_epoch < strftime('%s','now','-$db_retention days')"
+    fi
     
     if [ -n "$interfaces" ]; then
         check_interfaces "$interfaces"

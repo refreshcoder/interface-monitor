@@ -33,6 +33,53 @@ function get_log_data()
     local since = http.formvalue("since")
     
     local all_lines = {}
+    local uci = require "luci.model.uci".cursor()
+    local db_enable = uci:get("interface_monitor", "settings", "db_enable")
+    local db_path = uci:get("interface_monitor", "settings", "db_path") or "/etc/interface_monitor.db"
+    local source = nil
+    if file == "conn.log" then source = "connectivity" elseif file == "iface.log" then source = "iface" end
+    if db_enable == "1" and source and fs.access(db_path) then
+        local total = 0
+        local since_epoch = nil
+        if since then
+            local y,mo,d,h,mi,s = since:match("^(%d%d%d%d)%-(%d%d)%-(%d%d)T(%d%d):(%d%d):(%d%d)")
+            if y then
+                since_epoch = os.time({year=tonumber(y), month=tonumber(mo), day=tonumber(d), hour=tonumber(h), min=tonumber(mi), sec=tonumber(s)})
+            end
+        end
+        local count_sql = "SELECT COUNT(*) FROM logs WHERE source='" .. source .. "'"
+        if since_epoch then
+            count_sql = count_sql .. " AND ts_epoch>" .. tostring(since_epoch)
+        end
+        local fp_count = io.popen(string.format("sqlite3 %q \"%s\"", db_path, count_sql))
+        if fp_count then
+            local c = fp_count:read("*l")
+            fp_count:close()
+            total = tonumber(c) or 0
+        end
+        local offset = (page - 1) * limit
+        local sql = "SELECT line FROM logs WHERE source='" .. source .. "'"
+        if since_epoch then
+            sql = sql .. " AND ts_epoch>" .. tostring(since_epoch)
+        end
+        sql = sql .. " ORDER BY ts_epoch DESC LIMIT " .. tostring(limit) .. " OFFSET " .. tostring(offset)
+        local fp = io.popen(string.format("sqlite3 %q \"%s\"", db_path, sql))
+        if fp then
+            for line in fp:lines() do
+                table.insert(all_lines, line)
+            end
+            fp:close()
+        end
+        local response = {
+            logs = all_lines,
+            total = total,
+            page = page,
+            limit = limit
+        }
+        http.prepare_content("application/json")
+        http.write_json(response)
+        return
+    end
     if file and fs.access(log_path) then
         local fp
         if since then
@@ -83,6 +130,12 @@ function clear_logs()
         if f:match("%.log") then
             fs.remove(log_dir .. "/" .. f)
         end
+    end
+    local uci = require "luci.model.uci".cursor()
+    local db_enable = uci:get("interface_monitor", "settings", "db_enable")
+    local db_path = uci:get("interface_monitor", "settings", "db_path") or "/etc/interface_monitor.db"
+    if db_enable == "1" and fs.access(db_path) then
+        io.popen(string.format("sqlite3 %q \"%s\"", db_path, "DELETE FROM logs WHERE source IN ('iface','connectivity')")):close()
     end
     http.prepare_content("application/json")
     http.write_json({ result = "ok" })

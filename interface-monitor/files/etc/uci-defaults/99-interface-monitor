@@ -12,6 +12,9 @@ uci -q get $cfg.settings.monitor_interval >/dev/null || uci set $cfg.settings.mo
 uci -q get $cfg.settings.connectivity_enable >/dev/null || uci set $cfg.settings.connectivity_enable='0'
 uci -q get $cfg.settings.ping_interval >/dev/null || uci set $cfg.settings.ping_interval='60'
 uci -q get $cfg.settings.connectivity_verbose >/dev/null || uci set $cfg.settings.connectivity_verbose='0'
+uci -q get $cfg.settings.db_enable >/dev/null || uci set $cfg.settings.db_enable='1'
+uci -q get $cfg.settings.db_path >/dev/null || uci set $cfg.settings.db_path='/etc/interface_monitor.db'
+uci -q get $cfg.settings.db_retention_days >/dev/null || uci set $cfg.settings.db_retention_days='30'
 
 uci commit $cfg
 

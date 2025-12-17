@@ -10,7 +10,7 @@ define Package/interface-monitor
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=Interface monitor script
-  DEPENDS:=+ethtool +libuci
+  DEPENDS:=+ethtool +libuci +sqlite3-cli
 endef
 
 define Package/interface-monitor/description

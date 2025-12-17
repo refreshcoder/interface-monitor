@@ -32,4 +32,17 @@ local verbose = s:option(Flag, "connectivity_verbose", translate("Log Heartbeat 
 verbose.rmempty = false
 verbose:depends("connectivity_enable", "1")
 
+local db_enable = s:option(Flag, "db_enable", translate("Enable SQLite Persistence"))
+db_enable.rmempty = false
+
+local db_path = s:option(Value, "db_path", translate("Database Path"))
+db_path.datatype = "string"
+db_path.default = "/etc/interface_monitor.db"
+db_path:depends("db_enable", "1")
+
+local db_retention = s:option(Value, "db_retention_days", translate("Retention Days"))
+db_retention.datatype = "uinteger"
+db_retention.default = "30"
+db_retention:depends("db_enable", "1")
+
 return map

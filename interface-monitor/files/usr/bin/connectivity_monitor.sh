@@ -29,6 +29,12 @@ while true; do
     enable=$(uci -q get interface_monitor.settings.connectivity_enable)
     log_format=$(uci -q get interface_monitor.settings.log_format)
     [ -z "$log_format" ] && log_format="jsonl"
+    db_enable=$(uci -q get interface_monitor.settings.db_enable)
+    [ -z "$db_enable" ] && db_enable=0
+    db_path=$(uci -q get interface_monitor.settings.db_path)
+    [ -z "$db_path" ] && db_path="/etc/interface_monitor.db"
+    db_retention=$(uci -q get interface_monitor.settings.db_retention_days)
+    [ -z "$db_retention" ] && db_retention=30
     active_probe=$(uci -q get interface_monitor.settings.active_probe_enable)
     [ -z "$active_probe" ] && active_probe=1
     probe_method=$(uci -q get interface_monitor.settings.probe_method)
@@ -55,6 +61,9 @@ while true; do
     find "$LOG_DIR" -type f -name "*.log*" -mtime +7 -delete
     verbose=$(uci -q get interface_monitor.settings.connectivity_verbose)
     [ -z "$verbose" ] && verbose=0
+    if [ "$db_enable" = "1" ] && command -v sqlite3 >/dev/null 2>&1; then
+        sqlite3 "$db_path" "DELETE FROM logs WHERE source='connectivity' AND ts_epoch < strftime('%s','now','-$db_retention days')"
+    fi
 
     if [ "$enable" = "1" ] && [ -n "$targets" ]; then
         for target_ip in $targets; do
@@ -165,9 +174,16 @@ while true; do
             status="$status_eval"
 
             if [ "$log_format" = "jsonl" ]; then
-                echo "{\"ts\":\"$ts\",\"schema_version\":1,\"source\":\"connectivity\",\"ip\":\"$target_ip\",\"mac\":\"$mac\",\"hostname\":\"$hostname\",\"iface\":\"$target_iface\",\"phy_iface\":\"$phy_iface\",\"status\":\"$status\",\"probe_method\":\"$probe_used\",\"samples\":3,\"rtt_ms_avg\":$rtt_avg,\"loss_pct\":$loss_str,\"thresholds\":{\"rtt_warn_ms\":$rtt_warn,\"rtt_bad_ms\":$rtt_bad,\"loss_warn_pct\":$loss_warn,\"loss_bad_pct\":$loss_bad}}" >> "$log_file"
+                out_line="{\"ts\":\"$ts\",\"schema_version\":1,\"source\":\"connectivity\",\"ip\":\"$target_ip\",\"mac\":\"$mac\",\"hostname\":\"$hostname\",\"iface\":\"$target_iface\",\"phy_iface\":\"$phy_iface\",\"status\":\"$status\",\"probe_method\":\"$probe_used\",\"samples\":3,\"rtt_ms_avg\":$rtt_avg,\"loss_pct\":$loss_str,\"thresholds\":{\"rtt_warn_ms\":$rtt_warn,\"rtt_bad_ms\":$rtt_bad,\"loss_warn_pct\":$loss_warn,\"loss_bad_pct\":$loss_bad}}"
+                echo "$out_line" >> "$log_file"
             else
-                echo "ts=$ts|source=connectivity|schema_version=1|ip=$target_ip|mac=$mac|hostname=$hostname|iface=$target_iface|phy_iface=$phy_iface|status=$status|probe_method=$probe_used|samples=3|rtt_ms_avg=$rtt_avg|loss_pct=$loss_str|thresholds.rtt_warn_ms=$rtt_warn|thresholds.rtt_bad_ms=$rtt_bad|thresholds.loss_warn_pct=$loss_warn|thresholds.loss_bad_pct=$loss_bad" >> "$log_file"
+                out_line="ts=$ts|source=connectivity|schema_version=1|ip=$target_ip|mac=$mac|hostname=$hostname|iface=$target_iface|phy_iface=$phy_iface|status=$status|probe_method=$probe_used|samples=3|rtt_ms_avg=$rtt_avg|loss_pct=$loss_str|thresholds.rtt_warn_ms=$rtt_warn|thresholds.rtt_bad_ms=$rtt_bad|thresholds.loss_warn_pct=$loss_warn|thresholds.loss_bad_pct=$loss_bad"
+                echo "$out_line" >> "$log_file"
+            fi
+            if [ "$db_enable" = "1" ] && command -v sqlite3 >/dev/null 2>&1; then
+                epoch=$(date +%s)
+                sqlite3 "$db_path" "CREATE TABLE IF NOT EXISTS logs (ts TEXT, ts_epoch INTEGER, source TEXT, line TEXT); CREATE INDEX IF NOT EXISTS idx_logs_source_ts ON logs(source, ts_epoch);"
+                sqlite3 "$db_path" "INSERT INTO logs (ts, ts_epoch, source, line) VALUES ('$ts','$epoch','connectivity','$out_line')"
             fi
             
             # Update state file
@@ -177,9 +193,16 @@ while true; do
             if [ -z "$old_status" ]; then
                 echo "$target_ip $status" >> "$state_file"
                 if [ "$log_format" = "jsonl" ]; then
-                    echo "{\"ts\":\"$ts\",\"schema_version\":1,\"source\":\"connectivity\",\"ip\":\"$target_ip\",\"event\":\"state_change\",\"old_status\":\"none\",\"new_status\":\"$status\",\"reason\":\"probe_result\",\"metrics\":{\"rtt_ms_avg\":$rtt_avg,\"loss_pct\":$loss_str},\"iface\":\"$target_iface\",\"phy_iface\":\"$phy_iface\"}" >> "$events_log_file"
+                    out_line="{\"ts\":\"$ts\",\"schema_version\":1,\"source\":\"connectivity\",\"ip\":\"$target_ip\",\"event\":\"state_change\",\"old_status\":\"none\",\"new_status\":\"$status\",\"reason\":\"probe_result\",\"metrics\":{\"rtt_ms_avg\":$rtt_avg,\"loss_pct\":$loss_str},\"iface\":\"$target_iface\",\"phy_iface\":\"$phy_iface\"}"
+                    echo "$out_line" >> "$events_log_file"
                 else
-                    echo "ts=$ts|source=connectivity|schema_version=1|ip=$target_ip|event=state_change|old_status=none|new_status=$status|reason=probe_result|metrics.rtt_ms_avg=$rtt_avg|metrics.loss_pct=$loss_str|iface=$target_iface|phy_iface=$phy_iface" >> "$events_log_file"
+                    out_line="ts=$ts|source=connectivity|schema_version=1|ip=$target_ip|event=state_change|old_status=none|new_status=$status|reason=probe_result|metrics.rtt_ms_avg=$rtt_avg|metrics.loss_pct=$loss_str|iface=$target_iface|phy_iface=$phy_iface"
+                    echo "$out_line" >> "$events_log_file"
+                fi
+                if [ "$db_enable" = "1" ] && command -v sqlite3 >/dev/null 2>&1; then
+                    epoch=$(date +%s)
+                    sqlite3 "$db_path" "CREATE TABLE IF NOT EXISTS logs (ts TEXT, ts_epoch INTEGER, source TEXT, line TEXT); CREATE INDEX IF NOT EXISTS idx_logs_source_ts ON logs(source, ts_epoch);"
+                    sqlite3 "$db_path" "INSERT INTO logs (ts, ts_epoch, source, line) VALUES ('$ts','$epoch','connectivity','$out_line')"
                 fi
             elif [ "$status" != "$old_status" ]; then
                 sed -i "/^$target_ip /d" "$state_file"
@@ -191,9 +214,16 @@ while true; do
                     ev="recovered"
                 fi
                 if [ "$log_format" = "jsonl" ]; then
-                    echo "{\"ts\":\"$ts\",\"schema_version\":1,\"source\":\"connectivity\",\"ip\":\"$target_ip\",\"event\":\"$ev\",\"old_status\":\"$old_status\",\"new_status\":\"$status\",\"reason\":\"probe_result\",\"metrics\":{\"rtt_ms_avg\":$rtt_avg,\"loss_pct\":$loss_str},\"iface\":\"$target_iface\",\"phy_iface\":\"$phy_iface\"}" >> "$events_log_file"
+                    out_line="{\"ts\":\"$ts\",\"schema_version\":1,\"source\":\"connectivity\",\"ip\":\"$target_ip\",\"event\":\"$ev\",\"old_status\":\"$old_status\",\"new_status\":\"$status\",\"reason\":\"probe_result\",\"metrics\":{\"rtt_ms_avg\":$rtt_avg,\"loss_pct\":$loss_str},\"iface\":\"$target_iface\",\"phy_iface\":\"$phy_iface\"}"
+                    echo "$out_line" >> "$events_log_file"
                 else
-                    echo "ts=$ts|source=connectivity|schema_version=1|ip=$target_ip|event=$ev|old_status=$old_status|new_status=$status|reason=probe_result|metrics.rtt_ms_avg=$rtt_avg|metrics.loss_pct=$loss_str|iface=$target_iface|phy_iface=$phy_iface" >> "$events_log_file"
+                    out_line="ts=$ts|source=connectivity|schema_version=1|ip=$target_ip|event=$ev|old_status=$old_status|new_status=$status|reason=probe_result|metrics.rtt_ms_avg=$rtt_avg|metrics.loss_pct=$loss_str|iface=$target_iface|phy_iface=$phy_iface"
+                    echo "$out_line" >> "$events_log_file"
+                fi
+                if [ "$db_enable" = "1" ] && command -v sqlite3 >/dev/null 2>&1; then
+                    epoch=$(date +%s)
+                    sqlite3 "$db_path" "CREATE TABLE IF NOT EXISTS logs (ts TEXT, ts_epoch INTEGER, source TEXT, line TEXT); CREATE INDEX IF NOT EXISTS idx_logs_source_ts ON logs(source, ts_epoch);"
+                    sqlite3 "$db_path" "INSERT INTO logs (ts, ts_epoch, source, line) VALUES ('$ts','$epoch','connectivity','$out_line')"
                 fi
             fi
         done
